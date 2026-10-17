@@ -21,7 +21,8 @@ const tick = async () => { for (let i = 0; i < 12; i++) await Promise.resolve();
 function node(id) {
   const classes = new Set();
   return {
-    id, textContent: '', disabled: false, style: {}, clientWidth: 200, clientHeight: 240,
+    id, textContent: id === 'rtt' ? '-- ms' : id === 'txRate' ? '0 Hz' : '',
+    disabled: false, style: {}, clientWidth: 200, clientHeight: 240,
     listeners: new Map(), classList: {toggle(name, enabled) {
       enabled ? classes.add(name) : classes.delete(name);
     }},
@@ -254,13 +255,18 @@ test('RTT expires without incoming telemetry and pending samples stay bounded', 
   for (let i = 0; i < 250; i++) {
     app.setTime(100 + i * 20);
     await app.sendControl(false, false);
-    if (i % 50 === 49) app.updateMetrics();
+    if (i % 60 === 59) {
+      app.setTime(100 + (i + 1) * 20);
+      app.updateMetrics();
+    }
   }
-  assert.ok(app.pendingTimes.size <= 100);
+  assert.ok(app.pendingTimes.size <= 160);
   app.setTime(5110);
   app.onTelemetry(telemetry(app));
+  assert.equal(app.element('rtt').textContent, '-- ms');
+  app.setTime(6100); app.updateMetrics();
   assert.equal(app.element('rtt').textContent, '30 ms');
-  app.setTime(7200); app.updateMetrics();
+  app.setTime(8500); app.updateMetrics();
   assert.equal(app.pendingTimes.size, 0);
   assert.equal(app.element('rtt').textContent, '-- ms');
   app.onDisconnected();
@@ -286,4 +292,149 @@ test('joystick data changes immediately while DOM rendering batches into one fra
 
 test('invalid interval configuration falls back to the default', () => {
   assert.equal(load({txIntervalMs: Infinity}).TX_INTERVAL_MS, 20);
+});
+
+test('connection uses the proven legacy write API when newer bridge methods also exist', async () => {
+  const app = load();
+  let legacyCalls = 0, modernCalls = 0;
+  const control = characteristic(async () => { legacyCalls++; });
+  control.writeValueWithResponse = async () => { modernCalls++; throw 'Native bridge rejected the newer write method'; };
+  const selected = device(app, control);
+  app.context.navigator.bluetooth.requestDevice = async () => selected.device;
+  assert.equal(await app.connect(), true);
+  assert.equal(legacyCalls, 1);
+  assert.equal(modernCalls, 0);
+});
+
+test('notification subscription starts before the listener is attached, as in the working commit', async () => {
+  const app = load(), selected = device(app);
+  let started = false;
+  const add = selected.notifications.addEventListener;
+  selected.notifications.startNotifications = async () => { started = true; return selected.notifications; };
+  selected.notifications.addEventListener = function(type, handler) {
+    if (!started) throw 'Notifications have not started';
+    add.call(this, type, handler);
+  };
+  app.context.navigator.bluetooth.requestDevice = async () => selected.device;
+  assert.equal(await app.connect(), true);
+  assert.equal(selected.notifications.listeners.size, 1);
+});
+
+test('native string errors retain the reason and the failing connection stage', async () => {
+  const app = load();
+  const selected = device(app, characteristic(), async () => { throw 'Native service discovery rejected'; });
+  app.context.navigator.bluetooth.requestDevice = async () => selected.device;
+  assert.equal(await app.connect(), false);
+  assert.match(app.element('message').textContent, /service discovery/);
+  assert.match(app.element('message').textContent, /Native service discovery rejected/);
+  assert.doesNotMatch(app.element('message').textContent, /undefined/);
+});
+
+test('empty native rejection produces a useful error without throwing from catch', async () => {
+  const app = load();
+  app.context.navigator.bluetooth.requestDevice = async () => { throw undefined; };
+  assert.equal(await app.connect(), false);
+  assert.match(app.element('message').textContent, /device selection/);
+  assert.match(app.element('message').textContent, /no details/i);
+  assert.equal(app.element('connectButton').disabled, false);
+});
+
+test('legacy-only characteristic works even when properties are omitted by the bridge', async () => {
+  const app = load(); let writes = 0;
+  const selected = device(app, {writeValue: async () => { writes++; }});
+  app.context.navigator.bluetooth.requestDevice = async () => selected.device;
+  assert.equal(await app.connect(), true);
+  assert.equal(await app.sendControl(false, false), true);
+  assert.equal(writes, 2);
+});
+
+test('modern-only characteristic still connects when no legacy write API is available', async () => {
+  const app = load(); let writes = 0;
+  const selected = device(app, {properties: {write: true}, writeValueWithResponse: async () => { writes++; }});
+  app.context.navigator.bluetooth.requestDevice = async () => selected.device;
+  assert.equal(await app.connect(), true);
+  assert.equal(await app.sendControl(false, false), true);
+  assert.equal(writes, 2);
+});
+
+test('a failed native write preserves its reason and does not retry a command through another API', async () => {
+  const app = load(); let writes = 0, retries = 0;
+  const control = characteristic(async () => { writes++; throw 'Native write rejected'; });
+  control.writeValueWithResponse = async () => { retries++; };
+  attach(app, control);
+  assert.equal(await app.toggleArm(), false);
+  assert.equal(app.state.armed, false);
+  assert.match(app.element('message').textContent, /Native write rejected/);
+  assert.equal(writes, 1);
+  assert.equal(retries, 0);
+});
+
+test('the device picker is called directly from the click before disabling its button', async () => {
+  const app = load(), selection = deferred(), selected = device(app);
+  let disabledWhenCalled;
+  app.context.navigator.bluetooth.requestDevice = () => {
+    disabledWhenCalled = app.element('connectButton').disabled;
+    return selection.promise;
+  };
+  const attempt = app.connect();
+  assert.equal(disabledWhenCalled, false);
+  assert.equal(app.element('connectButton').disabled, true);
+  selection.resolve(selected.device);
+  assert.equal(await attempt, true);
+});
+
+test('TX reports packets per second averaged over a 1.2-second reporting window', async () => {
+  const app = load(); attach(app);
+  assert.ok(app.intervals.some(timer => timer.ms === 1200));
+  for (let i = 0; i < 60; i++) {
+    app.setTime(100 + i * 20);
+    await app.sendControl(false, false);
+  }
+  app.setTime(1299); app.updateMetrics();
+  assert.equal(app.element('txRate').textContent, '0 Hz');
+  app.setTime(1300); app.updateMetrics();
+  assert.equal(app.element('txRate').textContent, '50 Hz');
+});
+
+test('a delayed statistics timer divides by real elapsed time', async () => {
+  const app = load(); attach(app);
+  for (let i = 0; i < 60; i++) {
+    app.setTime(100 + i * 20);
+    await app.sendControl(false, false);
+  }
+  app.setTime(2500); app.updateMetrics();
+  assert.equal(app.element('txRate').textContent, '25 Hz');
+});
+
+test('failed writes are excluded from the average TX rate', async () => {
+  const app = load(); let attempts = 0;
+  attach(app, characteristic(async () => { if (++attempts % 2 === 0) throw new Error('Radio busy'); }));
+  for (let i = 0; i < 60; i++) {
+    app.setTime(100 + i * 20);
+    await app.sendControl(false, false);
+  }
+  app.setTime(1300); app.updateMetrics();
+  assert.equal(app.element('txRate').textContent, '25 Hz');
+});
+
+test('RTT averages replies in each reporting window without updating per packet', async () => {
+  const app = load(); attach(app);
+  for (const [started, rtt] of [[100, 20], [200, 40], [300, 90]]) {
+    app.setTime(started); await app.sendControl(false, false);
+    app.setTime(started + rtt); app.onTelemetry(telemetry(app));
+    assert.equal(app.element('rtt').textContent, '-- ms');
+  }
+  app.setTime(1300); app.updateMetrics();
+  assert.equal(app.element('rtt').textContent, '50 ms');
+  for (const [started, rtt] of [[1400, 20], [1500, 40]]) {
+    app.setTime(started); await app.sendControl(false, false);
+    app.setTime(started + rtt); app.onTelemetry(telemetry(app));
+    assert.equal(app.element('rtt').textContent, '50 ms');
+  }
+  app.setTime(2499); app.updateMetrics();
+  assert.equal(app.element('rtt').textContent, '50 ms');
+  app.setTime(2500); app.updateMetrics();
+  assert.equal(app.element('rtt').textContent, '30 ms');
+  app.setTime(3700); app.updateMetrics();
+  assert.equal(app.element('rtt').textContent, '-- ms');
 });

@@ -23,7 +23,7 @@
     .app {
       --edge:8px;
       width:100%; height:100%; min-width:0; min-height:0;
-      display:grid; grid-template-rows:42px minmax(0,1fr) 22px; gap:8px;
+      display:grid; grid-template-rows:42px minmax(0,1fr) 30px; gap:8px;
       padding:max(var(--edge),env(safe-area-inset-top)) max(12px,env(safe-area-inset-right))
         max(var(--edge),env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left));
     }
@@ -98,18 +98,23 @@
     #armButton { color:var(--green); border-color:rgba(74,222,128,.34); }
     body.armed #armButton { color:#10120b; border-color:var(--amber); background:var(--amber); }
     #stopButton { color:#fff; border-color:#d93650; background:linear-gradient(180deg,#e9445d,#bc2941); }
-    .telemetry { flex-shrink:0; display:grid; grid-template-columns:1fr 1fr; gap:5px; }
-    .metric { min-width:0; padding:7px 4px; border:1px solid #202a38; border-radius:9px; background:rgba(17,23,32,.72); text-align:center; }
-    .metric span { display:block; color:var(--muted); font-size:.48rem; font-weight:800; letter-spacing:.1em; }
-    .metric b { display:block; margin-top:4px; color:#cbd5e1; font:700 .62rem/1 ui-monospace,monospace; }
-    footer { justify-content:flex-start; color:var(--muted); font-size:.61rem; }
-    #message { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .telemetry { flex:none; width:178px; max-width:100%; display:grid; grid-template-columns:1fr 1fr; gap:5px; }
+    .metric {
+      min-width:0; min-height:26px; display:flex; align-items:center; justify-content:center; gap:6px;
+      padding:4px 6px; border:1px solid #202a38; border-radius:9px; background:rgba(17,23,32,.72);
+    }
+    .metric span { color:var(--muted); font-size:.48rem; font-weight:800; letter-spacing:.1em; }
+    .metric b { color:#cbd5e1; font:700 .62rem/1 ui-monospace,monospace; white-space:nowrap; }
+    footer { color:var(--muted); font-size:.61rem; }
+    #message { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
     @supports(height:100dvh) { html,body,.app { height:100dvh; } }
     @media(orientation:portrait) {
+      .app { grid-template-rows:42px minmax(0,1fr) 54px; }
       main { grid-template-columns:repeat(2,minmax(0,1fr)); grid-template-rows:auto minmax(0,1fr); grid-template-areas:"center center" "left right"; gap:14px 10px; }
       .command-panel { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:6px; align-self:start; }
       .flight-state,.command { min-height:58px; }
-      .telemetry { display:none; }
+      footer { display:grid; grid-template-columns:minmax(0,1fr); grid-template-rows:auto 26px; gap:4px; }
+      .telemetry { width:100%; }
       .stick-name { font-size:.59rem; }
       .stick-value { font-size:.56rem; }
     }
@@ -131,15 +136,13 @@
       .flight-state { padding:5px; }
     }
     @media(max-height:480px) and (orientation:landscape) {
-      .app { --edge:5px; grid-template-rows:34px minmax(0,1fr) 18px; gap:5px; }
+      .app { --edge:5px; grid-template-rows:34px minmax(0,1fr) 30px; gap:5px; }
       .brand-icon { width:28px; height:28px; }
       .brand-sub { display:none; }
       .command-panel { gap:6px; }
       .command { min-height:44px; }
       .flight-state { padding:7px; }
-      .metric { padding:5px 3px; }
     }
-    .command-panel.compact .telemetry { display:none; }
     .command-panel.tight { gap:5px; }
     .command-panel.tight .command { min-height:38px; }
     .command-panel.tight .flight-state { padding:5px; }
@@ -162,14 +165,19 @@
         <button id="connectButton" class="command">CONNECT BLE</button>
         <button id="armButton" class="command" disabled>ARM</button>
         <button id="stopButton" class="command">STOP</button>
-        <div class="telemetry"><div class="metric"><span>TX</span><b id="txRate">0 Hz</b></div><div class="metric"><span>RTT</span><b id="rtt">-- ms</b></div></div>
       </section>
       <section class="stick-panel right">
         <div class="stick-head"><span class="stick-name">ROLL / PITCH</span><span id="rightValue" class="stick-value">R +000 · P +000</span></div>
         <div class="pad-wrap"><div class="pad"><span class="axis top">PITCH +</span><span class="axis bottom">PITCH −</span><span class="axis left">ROLL −</span><span class="axis right">ROLL +</span><div id="rightStick" class="stick-zone"></div></div></div>
       </section>
     </main>
-    <footer><span id="message" role="status" aria-live="polite">Press CONNECT BLE to select a controller</span></footer>
+    <footer>
+      <span id="message" role="status" aria-live="polite">Press CONNECT BLE to select a controller</span>
+      <div class="telemetry" role="group" aria-label="Link statistics, 1.2-second average">
+        <div class="metric" title="Average successful writes per second"><span>TX</span><b id="txRate">0 Hz</b></div>
+        <div class="metric" title="Average round-trip time"><span>RTT</span><b id="rtt">-- ms</b></div>
+      </div>
+    </footer>
   </div>
   <script src="./nipplejs.min.js"></script>
   <script>
@@ -190,6 +198,7 @@
       var configuredInterval=Number(CONFIG.txIntervalMs);
       var TX_INTERVAL_MS=Number.isFinite(configuredInterval)&&configuredInterval>0?Math.max(10,configuredInterval):20;
       var TELEMETRY_TIMEOUT_MS=2000;
+      var METRICS_INTERVAL_MS=1200;
       var state={throttle:0,yaw:0,pitch:0,roll:0,armed:false,seq:0};
       var ble={
         session:0,device:null,control:null,telemetry:null,
@@ -198,6 +207,7 @@
         disconnectHandler:null,telemetryHandler:null
       };
       var sent=0,lastRtt=null,lastTelemetryAt=null,reportedArmed=null,pendingTimes=new Map();
+      var metricsStartedAt=performance.now(),rttSum=0,rttSamples=0;
       var nextControlTimer=null,lastControlQueuedAt=0;
       var armPending=false,stopPending=false,controlAction=0,renderFrame=null;
       var ui={};
@@ -220,6 +230,20 @@
       }
       function setText(node,text){if(node.textContent!==text)node.textContent=text}
       function message(text){setText(ui.message,text);ui.message.title=text}
+      function errorMessage(error){
+        var fallback='Unknown Bluetooth error (no details returned)';
+        if(error===null||error===undefined||error==='')return fallback;
+        if(typeof error==='string')return error;
+        var fields=['message','description','error','reason'];
+        for(var i=0;i<fields.length;i++){
+          if(typeof error[fields[i]]==='string'&&error[fields[i]])return error[fields[i]]
+        }
+        try{
+          var details=JSON.stringify(error);
+          if(details&&details!=='{}')return details
+        }catch(ignored){}
+        return typeof error.name==='string'&&error.name?error.name:fallback
+      }
       function renderControls(){
         ui.armButton.disabled=!ble.connected||ble.connecting||ble.disconnecting||armPending||stopPending;
         ui.connectButton.disabled=ble.connecting||ble.disconnecting||stopPending;
@@ -266,7 +290,7 @@
             var exitFullscreen=document.exitFullscreen||document.webkitExitFullscreen;
             if(exitFullscreen)await exitFullscreen.call(document)
           }
-        }catch(error){message('Unable to change fullscreen mode: '+error.message)}
+        }catch(error){message('Unable to change fullscreen mode: '+errorMessage(error))}
       }
       function moveData(event,legacy){
         if(legacy&&legacy.vector)return legacy;
@@ -328,7 +352,6 @@
       }
       function layoutSticks(){
         var landscape=window.matchMedia('(orientation: landscape)').matches;
-        ui.commandPanel.classList.toggle('compact',landscape&&ui.commandPanel.clientHeight<255);
         ui.commandPanel.classList.toggle('tight',landscape&&ui.commandPanel.clientHeight<205);
         leftGeometry=applyStickGeometry(left,ui.leftStick);
         rightGeometry=applyStickGeometry(right,ui.rightStick);
@@ -423,13 +446,14 @@
         var packet=makePacket(job.emergency),seq=state.seq,success=false;
         pendingTimes.set(seq,performance.now());
         try{
-          if(!job.withResponse&&control.properties.writeWithoutResponse&&control.writeValueWithoutResponse){
+          if(!job.withResponse&&typeof control.writeValueWithoutResponse==='function'&&(control.properties||{}).writeWithoutResponse){
             await control.writeValueWithoutResponse(packet)
-          }else if(control.properties.write&&control.writeValueWithResponse){
-            await control.writeValueWithResponse(packet)
-          }else if(control.writeValue){
+          }else if(typeof control.writeValue==='function'){
+            // Keep the API used by the working Bluefy-compatible version.
             await control.writeValue(packet)
-          }else if(control.properties.writeWithoutResponse&&control.writeValueWithoutResponse){
+          }else if(typeof control.writeValueWithResponse==='function'&&(control.properties||{}).write!==false){
+            await control.writeValueWithResponse(packet)
+          }else if(typeof control.writeValueWithoutResponse==='function'&&(control.properties||{}).writeWithoutResponse){
             await control.writeValueWithoutResponse(packet)
           }else{
             throw new Error('The control characteristic is not writable.')
@@ -438,8 +462,8 @@
         }catch(error){
           if(currentSession(session)&&ble.active===job){
             pendingTimes.delete(seq);
-            ble.lastError=error.message;
-            message('BLE send failed: '+error.message)
+            ble.lastError=errorMessage(error);
+            message('BLE send failed: '+ble.lastError)
           }
         }
         finally{
@@ -455,6 +479,9 @@
 
       function resetTelemetry(){
         sent=0;
+        metricsStartedAt=performance.now();
+        rttSum=0;
+        rttSamples=0;
         lastRtt=null;
         lastTelemetryAt=null;
         reportedArmed=null;
@@ -464,7 +491,7 @@
       }
 
       function updateMetrics(){
-        var now=performance.now();
+        var now=performance.now(),elapsed=now-metricsStartedAt;
         pendingTimes.forEach(function(started,seq){
           if(now-started>=TELEMETRY_TIMEOUT_MS)pendingTimes.delete(seq)
         });
@@ -474,9 +501,15 @@
           reportedArmed=null;
           render()
         }
-        setText(ui.txRate,sent+' Hz');
+        if(elapsed<METRICS_INTERVAL_MS)return;
+        // Use real elapsed time: a delayed timer must not inflate the TX rate.
+        setText(ui.txRate,Math.round(sent*1000/elapsed)+' Hz');
+        lastRtt=rttSamples&&lastTelemetryAt!==null?Math.round(rttSum/rttSamples):null;
+        setText(ui.rtt,lastRtt===null?'-- ms':lastRtt+' ms');
         sent=0;
-        setText(ui.rtt,lastRtt===null?'-- ms':lastRtt+' ms')
+        rttSum=0;
+        rttSamples=0;
+        metricsStartedAt=now
       }
 
       function onTelemetry(event){
@@ -490,8 +523,8 @@
         // Existing telemetry flags: armed=1, failsafe=2, ARM rejected=4.
         reportedArmed=Boolean(flags&1);
         if(started!==undefined){
-          lastRtt=now-started<TELEMETRY_TIMEOUT_MS?Math.max(0,Math.round(now-started)):null;
-          setText(ui.rtt,lastRtt===null?'-- ms':lastRtt+' ms');
+          var rtt=Math.max(0,now-started);
+          if(rtt<TELEMETRY_TIMEOUT_MS){rttSum+=rtt;rttSamples++}
           pendingTimes.delete(seq)
         }
         if(flags&4){
@@ -546,7 +579,10 @@
 
       async function connect(){
         if(ble.connecting||ble.disconnecting||stopPending)return false;
-        if(!navigator.bluetooth){message('Web Bluetooth is unavailable. Use Chrome or Edge on Android or desktop.');return}
+        if(!navigator.bluetooth||typeof navigator.bluetooth.requestDevice!=='function'){
+          message('Web Bluetooth is unavailable. Use Chrome/Edge on Android or Bluefy on iOS.');
+          return false
+        }
         if(ble.connected){
           var disconnectSession=ble.session,previousDevice=ble.device;
           ble.disconnecting=true;
@@ -557,39 +593,49 @@
           if(previousDevice&&previousDevice.gatt.connected)previousDevice.gatt.disconnect();
           return true
         }
-        var session=++ble.session,device=null;
+        var session=++ble.session,device=null,stage='device selection';
         ble.connecting=true;
         ble.lastError='';
-        resetTelemetry();
-        setConnection(false,'SELECT DEVICE');
-        message('Select a compatible '+targetName+' in the Bluetooth device picker…');
         function checkSession(){
           if(!currentSession(session))throw new Error('The connection attempt has expired.')
         }
         try{
-          device=await navigator.bluetooth.requestDevice({filters:[{services:[SERVICE_UUID]}]});
+          // Open the native chooser in the click handler before changing its button.
+          var selection=navigator.bluetooth.requestDevice({filters:[{services:[SERVICE_UUID]}]});
+          resetTelemetry();
+          setConnection(false,'SELECT DEVICE');
+          message('Select a compatible '+targetName+' in the Bluetooth device picker…');
+          device=await selection;
           checkSession();
           ble.device=device;
           ble.disconnectHandler=function(event){if(currentSession(session))onDisconnected(event)};
           device.addEventListener('gattserverdisconnected',ble.disconnectHandler);
           setConnection(false,'CONNECTING');
+          stage='GATT connect';
           var server=await device.gatt.connect();
           checkSession();
+          stage='service discovery';
           var service=await server.getPrimaryService(SERVICE_UUID);
           checkSession();
+          stage='control characteristic';
           var control=await service.getCharacteristic(CONTROL_UUID);
           checkSession();
+          stage='telemetry characteristic';
           var telemetry=await service.getCharacteristic(TELEMETRY_UUID);
           checkSession();
           ble.control=control;
           ble.telemetry=telemetry;
+          // Preserve the subscription order of commit 1f000e0 for BLE bridges.
+          stage='notifications';
+          await telemetry.startNotifications();
+          checkSession();
+          stage='telemetry listener';
           ble.telemetryHandler=function(event){
             if(currentSession(session)&&event.target===telemetry)onTelemetry(event)
           };
           telemetry.addEventListener('characteristicvaluechanged',ble.telemetryHandler);
-          await telemetry.startNotifications();
-          checkSession();
           setConnection(true,'BLE OK');
+          stage='initial control write';
           var initialized=await sendControl(true,true);
           checkSession();
           if(!initialized)throw new Error(ble.lastError||'The initial control command could not be sent.');
@@ -599,8 +645,8 @@
           return true
         }catch(error){
           if(currentSession(session)){
-            var canceled=error.name==='NotFoundError'&&!device;
-            clearConnection('NOT CONNECTED',canceled?'Device selection was canceled':'BLE connection failed: '+error.message)
+            var canceled=error&&error.name==='NotFoundError'&&!device;
+            clearConnection('NOT CONNECTED',canceled?'Device selection was canceled':'BLE connection failed ['+stage+']: '+errorMessage(error))
           }
           if(device&&device!==ble.device&&device.gatt.connected)device.gatt.disconnect();
           return false
@@ -659,8 +705,8 @@
       document.addEventListener('fullscreenchange',onFullscreenChange);
       document.addEventListener('webkitfullscreenchange',onFullscreenChange);
       setInterval(requestControlUpdate,TX_INTERVAL_MS);
-      setInterval(updateMetrics,1000);
-      window.addEventListener('error',function(event){message('Interface error: '+event.message)});
+      setInterval(updateMetrics,METRICS_INTERVAL_MS);
+      window.addEventListener('error',function(event){message('Interface error: '+errorMessage(event.error||event.message))});
       document.addEventListener('visibilitychange',function(){if(document.hidden&&state.armed)stop()});
       window.addEventListener('pagehide',function(){state.armed=false;sendControl(true,false)});
       render();renderFullscreen();setConnection(false,'NOT CONNECTED');

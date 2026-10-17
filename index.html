@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
   <meta name="theme-color" content="#080b10">
   <link rel="icon" href="data:,">
-  <title>ESP32 Flight Control</title>
+  <title>Flight Control</title>
   <style>
     :root {
       color-scheme: dark;
@@ -28,7 +28,7 @@
     .command-panel{grid-area:center;min-height:0;display:flex;flex-direction:column;justify-content:center;gap:8px}.flight-state{padding:9px 8px;border:1px solid var(--line);border-radius:12px;background:var(--panel);text-align:center}.flight-state small{display:block;color:var(--muted);font-size:.54rem;font-weight:800;letter-spacing:.14em}.flight-state strong{display:block;margin-top:5px;color:var(--green);font-size:.78rem;letter-spacing:.1em}body.armed .flight-state{border-color:rgba(251,191,36,.42);background:rgba(251,191,36,.08)}body.armed .flight-state strong{color:var(--amber)}
     .command{appearance:none;width:100%;min-height:48px;border:1px solid var(--line);border-radius:13px;background:linear-gradient(180deg,#18212d,#10161e);color:var(--text);font-size:.7rem;font-weight:900;letter-spacing:.12em;cursor:pointer;touch-action:manipulation;box-shadow:inset 0 1px rgba(255,255,255,.04),0 4px 14px rgba(0,0,0,.22)}.command:active{transform:translateY(1px)}.command:disabled{opacity:.35}#connectButton{color:var(--blue);border-color:rgba(56,189,248,.4)}#armButton{color:var(--green);border-color:rgba(74,222,128,.34)}body.armed #armButton{color:#10120b;border-color:var(--amber);background:var(--amber)}#stopButton{color:#fff;border-color:#d93650;background:linear-gradient(180deg,#e9445d,#bc2941)}
     .telemetry{display:grid;grid-template-columns:1fr 1fr;gap:5px}.metric{min-width:0;padding:7px 4px;border:1px solid #202a38;border-radius:9px;background:rgba(17,23,32,.72);text-align:center}.metric span{display:block;color:var(--muted);font-size:.48rem;font-weight:800;letter-spacing:.1em}.metric b{display:block;margin-top:4px;color:#cbd5e1;font:700 .62rem/1 ui-monospace,monospace}
-    footer{gap:12px;color:var(--muted);font-size:.61rem}#message{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#endpoint{flex:none;color:#617086;font-family:ui-monospace,monospace}
+    footer{justify-content:flex-start;gap:12px;color:var(--muted);font-size:.61rem}#message{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
     @supports(height:100dvh){html,body{height:100dvh}.app{height:100dvh}}
     @media(orientation:portrait){html,body{overflow:hidden}.app{height:100dvh;min-height:0;grid-template-rows:42px minmax(0,1fr) 22px}main{grid-template-columns:minmax(0,1fr) minmax(0,1fr);grid-template-rows:auto minmax(0,1fr);grid-template-areas:"center center" "left right";gap:14px 10px}.command-panel{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;align-self:start}.flight-state,.command{min-height:58px}.telemetry{display:none}.pad{width:100%}.stick-name{font-size:.59rem}.stick-value{min-width:0;font-size:.56rem}}
     @media(max-width:480px){.brand-sub{display:none}.fullscreen-button{padding-inline:8px}.link-state{padding-inline:9px;font-size:.62rem}}
@@ -38,7 +38,7 @@
 <body>
   <div class="app">
     <header>
-      <div class="brand"><span class="brand-icon">⌁</span><div class="brand-copy"><div class="brand-name">ESP32 FLIGHT</div><div class="brand-sub">DIRECT CONTROL LINK</div></div></div>
+      <div class="brand"><span class="brand-icon">⌁</span><div class="brand-copy"><div id="brandName" class="brand-name">FLIGHT CONTROL</div><div class="brand-sub">DIRECT CONTROL LINK</div></div></div>
       <div class="header-actions"><button id="fullscreenButton" class="fullscreen-button" type="button" title="Enter fullscreen">FULL</button><div id="linkState" class="link-state"><span class="link-dot"></span><span id="linkText">NOT CONNECTED</span></div></div>
     </header>
     <main>
@@ -58,21 +58,35 @@
         <div class="pad-wrap"><div class="pad"><span class="axis top">PITCH +</span><span class="axis bottom">PITCH −</span><span class="axis left">ROLL −</span><span class="axis right">ROLL +</span><div id="rightStick" class="stick-zone"></div></div></div>
       </section>
     </main>
-    <footer><span id="message">Press CONNECT BLE to select ESP32-DRONE</span><span id="endpoint">ADAPTIVE TX · 50 Hz HEARTBEAT</span></footer>
+    <footer><span id="message">Press CONNECT BLE to select a controller</span></footer>
   </div>
   <script src="./nipplejs.min.js"></script>
   <script>
     (function(){
       'use strict';
-      var SERVICE_UUID='d4f20001-8f69-4b7f-9f5a-6c253728d1a0';
-      var CONTROL_UUID='d4f20002-8f69-4b7f-9f5a-6c253728d1a0';
-      var TELEMETRY_UUID='d4f20003-8f69-4b7f-9f5a-6c253728d1a0';
-      var TX_INTERVAL_MS=20;
+      var CONFIG=Object.freeze(Object.assign({
+        appName:'FLIGHT CONTROL',
+        targetLabel:'controller',
+        fallbackDeviceName:'BLE controller',
+        serviceUuid:'d4f20001-8f69-4b7f-9f5a-6c253728d1a0',
+        controlUuid:'d4f20002-8f69-4b7f-9f5a-6c253728d1a0',
+        telemetryUuid:'d4f20003-8f69-4b7f-9f5a-6c253728d1a0',
+        txIntervalMs:20
+      },window.FLIGHT_CONTROL_CONFIG||{}));
+      var SERVICE_UUID=CONFIG.serviceUuid;
+      var CONTROL_UUID=CONFIG.controlUuid;
+      var TELEMETRY_UUID=CONFIG.telemetryUuid;
+      var TX_INTERVAL_MS=Math.max(10,Number(CONFIG.txIntervalMs)||20);
       var state={throttle:0,yaw:0,pitch:0,roll:0,armed:false,seq:0};
       var ble={device:null,control:null,telemetry:null,connected:false,busy:false,pending:null};
       var sent=0,lastRtt=null,pendingTimes=new Map();
       var nextControlTimer=null,lastControlQueuedAt=0;
       var el=function(id){return document.getElementById(id)};
+      var targetName=String(CONFIG.targetLabel||'controller');
+      var targetSentence=targetName.charAt(0).toUpperCase()+targetName.slice(1);
+      document.title=String(CONFIG.appName||'FLIGHT CONTROL');
+      el('brandName').textContent=document.title;
+      el('message').textContent='Press CONNECT BLE to select a '+targetName;
       function clamp(value,min,max){value=Number(value);return Math.max(min,Math.min(max,isFinite(value)?value:0))}
       function signed(value){var n=Math.round(value*100);return(n>=0?'+':'−')+String(Math.abs(n)).padStart(3,'0')}
       function message(text){el('message').textContent=text}
@@ -98,12 +112,44 @@
       function moveData(event,legacy){if(legacy&&legacy.vector)return legacy;if(event&&event.data&&event.data.vector)return event.data;if(event&&event.vector)return event;return null}
       if(!window.nipplejs||typeof window.nipplejs.create!=='function'){setConnection(false,'UI ERROR');message('NippleJS could not be loaded. Reload the page.');return}
       var pad=Math.min(el('leftStick').clientWidth||260,el('leftStick').clientHeight||260);
-      var stickSize=clamp(Math.round(pad*.64),108,170);
+      var initialThumbSize=Math.max(28,Math.round(pad*(window.matchMedia('(orientation: portrait)').matches?.24:.28)));
+      var stickSize=Math.max(44,Math.round(pad-initialThumbSize));
       var common={mode:'static',position:{left:'50%',top:'50%'},size:stickSize,threshold:.03,fadeTime:80,restOpacity:1,color:{front:'linear-gradient(145deg,#7dd3fc,#0284c7)',back:'rgba(56,189,248,.14)'}};
       var left=nipplejs.create(Object.assign({},common,{zone:el('leftStick'),restJoystick:{x:true,y:false}}));
       var right=nipplejs.create(Object.assign({},common,{zone:el('rightStick'),restJoystick:true}));
+      function applyStickGeometry(manager,zoneId){
+        var zone=el(zoneId),padSize=Math.min(zone.clientWidth||260,zone.clientHeight||260);
+        var portrait=window.matchMedia('(orientation: portrait)').matches;
+        var thumbSize=Math.max(28,Math.round(padSize*(portrait?.24:.28)));
+        var trackSize=Math.max(44,Math.round(padSize-thumbSize));
+        var joystick=manager.getJoystickByUid();
+        manager.options.size=trackSize;
+        if(!joystick)return{joystick:null,radius:trackSize/2};
+        joystick.options.size=trackSize;
+        joystick.ui.back.style.width=trackSize+'px';joystick.ui.back.style.height=trackSize+'px';
+        joystick.ui.back.style.marginLeft=-(trackSize/2)+'px';joystick.ui.back.style.marginTop=-(trackSize/2)+'px';
+        joystick.ui.front.style.width=thumbSize+'px';joystick.ui.front.style.height=thumbSize+'px';
+        joystick.ui.front.style.marginLeft=-(thumbSize/2)+'px';joystick.ui.front.style.marginTop=-(thumbSize/2)+'px';
+        return{joystick:joystick,radius:trackSize/2}
+      }
+      function positionFromState(geometry,x,y){
+        if(!geometry.joystick)return;
+        var length=Math.hypot(x,y),scale=length>1?1/length:1;
+        geometry.joystick.setPosition(undefined,{x:x*scale*geometry.radius,y:-y*scale*geometry.radius})
+      }
+      function layoutSticks(){
+        var leftGeometry=applyStickGeometry(left,'leftStick');
+        var rightGeometry=applyStickGeometry(right,'rightStick');
+        stickSize=leftGeometry.radius*2;
+        positionFromState(leftGeometry,state.yaw,state.throttle*2-1);
+        positionFromState(rightGeometry,state.roll,state.pitch)
+      }
       function resetThrottle(){var joystick=left.getJoystickByUid();if(joystick)joystick.setPosition(undefined,{x:0,y:stickSize/2})}
-      resetThrottle();
+      layoutSticks();
+      var stickLayoutFrame=0;
+      function scheduleStickLayout(){cancelAnimationFrame(stickLayoutFrame);stickLayoutFrame=requestAnimationFrame(layoutSticks)}
+      window.addEventListener('resize',scheduleStickLayout);
+      window.addEventListener('orientationchange',scheduleStickLayout);
       left.on('move',function(event,legacy){var data=moveData(event,legacy);if(!data)return;state.yaw=clamp(data.vector.x,-1,1);state.throttle=clamp((data.vector.y+1)/2,0,1);render();requestControlUpdate()});
       left.on('end',function(){state.yaw=0;render();requestControlUpdate()});
       right.on('move',function(event,legacy){var data=moveData(event,legacy);if(!data)return;state.roll=clamp(data.vector.x,-1,1);state.pitch=clamp(data.vector.y,-1,1);render();requestControlUpdate()});
@@ -166,21 +212,21 @@
         var flags=view.getUint8(1),seq=view.getUint16(2,true),started=pendingTimes.get(seq);
         if(started!==undefined){lastRtt=Math.max(0,Math.round(performance.now()-started));el('rtt').textContent=lastRtt+' ms';pendingTimes.delete(seq)}
         pendingTimes.forEach(function(value,key){if(performance.now()-value>2000)pendingTimes.delete(key)});
-        if(flags&4){state.armed=false;render();message('ESP32 rejected ARM: throttle must be ≤ 5%')}
-        if((flags&2)&&state.armed){state.armed=false;render();message('ESP32 FAILSAFE active — system is SAFE')}
+        if(flags&4){state.armed=false;render();message(targetSentence+' rejected ARM: throttle must be ≤ 5%')}
+        if((flags&2)&&state.armed){state.armed=false;render();message(targetSentence+' FAILSAFE active — system is SAFE')}
       }
 
       function onDisconnected(){
         if(ble.pending)ble.pending.waiters.forEach(function(resolve){resolve(false)});
         if(nextControlTimer!==null)clearTimeout(nextControlTimer);nextControlTimer=null;lastControlQueuedAt=0;
         ble.connected=false;ble.control=null;ble.telemetry=null;ble.busy=false;ble.pending=null;pendingTimes.clear();
-        state.armed=false;render();setConnection(false,'LINK LOST');message('Bluetooth disconnected — ESP32 was automatically DISARMED')
+        state.armed=false;render();setConnection(false,'LINK LOST');message('Bluetooth disconnected — '+targetSentence+' was automatically DISARMED')
       }
 
       async function connect(){
         if(!navigator.bluetooth){message('Web Bluetooth is unavailable. Use Chrome or Edge on Android or desktop.');return}
         if(ble.connected){await stop();if(ble.device&&ble.device.gatt.connected)ble.device.gatt.disconnect();return}
-        setConnection(false,'SELECT DEVICE');message('Select ESP32-DRONE in the Bluetooth device picker…');
+        setConnection(false,'SELECT DEVICE');message('Select a compatible '+targetName+' in the Bluetooth device picker…');
         try{
           ble.device=await navigator.bluetooth.requestDevice({filters:[{services:[SERVICE_UUID]}]});
           ble.device.addEventListener('gattserverdisconnected',onDisconnected);
@@ -188,7 +234,7 @@
           var server=await ble.device.gatt.connect(),service=await server.getPrimaryService(SERVICE_UUID);
           ble.control=await service.getCharacteristic(CONTROL_UUID);ble.telemetry=await service.getCharacteristic(TELEMETRY_UUID);
           await ble.telemetry.startNotifications();ble.telemetry.addEventListener('characteristicvaluechanged',onTelemetry);
-          setConnection(true,'BLE OK');message('Connected to '+(ble.device.name||'ESP32-DRONE')+' — system is SAFE');await sendControl(true,true)
+          setConnection(true,'BLE OK');message('Connected to '+(ble.device.name||CONFIG.fallbackDeviceName)+' — system is SAFE');await sendControl(true,true)
         }catch(error){
           if(ble.device&&ble.device.gatt.connected)ble.device.gatt.disconnect();
           setConnection(false,'NOT CONNECTED');message(error.name==='NotFoundError'?'Device selection was canceled':'BLE connection failed: '+error.message)

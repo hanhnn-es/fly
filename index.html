@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="vi">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
@@ -20,6 +20,7 @@
     .app{width:100%;height:100%;display:grid;grid-template-rows:42px minmax(0,1fr) 22px;gap:8px;padding:max(8px,env(safe-area-inset-top)) max(12px,env(safe-area-inset-right)) max(8px,env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left))}
     header,footer{display:flex;align-items:center;justify-content:space-between;min-width:0}
     .brand{display:flex;align-items:center;gap:10px}.brand-icon{width:32px;height:32px;display:grid;place-items:center;border:1px solid #334155;border-radius:10px;background:linear-gradient(145deg,#172231,#0d1219);color:var(--blue);font-size:17px}.brand-copy{line-height:1}.brand-name{font-size:.86rem;font-weight:850;letter-spacing:.09em}.brand-sub{margin-top:5px;color:var(--muted);font-size:.58rem;letter-spacing:.12em}
+    .header-actions{display:flex;align-items:center;gap:7px;min-width:0}.fullscreen-button{appearance:none;flex:none;padding:7px 9px;border:1px solid var(--line);border-radius:999px;background:rgba(17,23,32,.85);color:#b9c5d4;font-size:.58rem;font-weight:800;letter-spacing:.08em;cursor:pointer;touch-action:manipulation}.fullscreen-button:active{transform:translateY(1px)}
     .link-state{display:flex;align-items:center;gap:8px;min-width:0;padding:7px 11px;border:1px solid var(--line);border-radius:999px;background:rgba(17,23,32,.85);color:var(--muted);font-size:.7rem;font-weight:700}.link-dot{width:7px;height:7px;flex:none;border-radius:50%;color:var(--red);background:currentColor;box-shadow:0 0 10px currentColor}.link-state.online{color:var(--green);border-color:rgba(74,222,128,.28)}#linkText{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
     main{min-height:0;display:grid;grid-template-columns:minmax(230px,1fr) 150px minmax(230px,1fr);grid-template-areas:"left center right";align-items:stretch;gap:clamp(10px,2vw,24px)}
     .stick-panel{min-width:0;display:grid;grid-template-rows:auto minmax(0,1fr);gap:6px}.stick-panel.left{grid-area:left}.stick-panel.right{grid-area:right}.stick-head{display:flex;align-items:center;justify-content:space-between;padding:0 4px}.stick-name{color:#b9c5d4;font-size:.7rem;font-weight:800;letter-spacing:.13em}.stick-value{min-width:102px;color:var(--blue);font:700 .68rem/1 ui-monospace,monospace;text-align:right}
@@ -28,7 +29,9 @@
     .command{appearance:none;width:100%;min-height:48px;border:1px solid var(--line);border-radius:13px;background:linear-gradient(180deg,#18212d,#10161e);color:var(--text);font-size:.7rem;font-weight:900;letter-spacing:.12em;cursor:pointer;touch-action:manipulation;box-shadow:inset 0 1px rgba(255,255,255,.04),0 4px 14px rgba(0,0,0,.22)}.command:active{transform:translateY(1px)}.command:disabled{opacity:.35}#connectButton{color:var(--blue);border-color:rgba(56,189,248,.4)}#armButton{color:var(--green);border-color:rgba(74,222,128,.34)}body.armed #armButton{color:#10120b;border-color:var(--amber);background:var(--amber)}#stopButton{color:#fff;border-color:#d93650;background:linear-gradient(180deg,#e9445d,#bc2941)}
     .telemetry{display:grid;grid-template-columns:1fr 1fr;gap:5px}.metric{min-width:0;padding:7px 4px;border:1px solid #202a38;border-radius:9px;background:rgba(17,23,32,.72);text-align:center}.metric span{display:block;color:var(--muted);font-size:.48rem;font-weight:800;letter-spacing:.1em}.metric b{display:block;margin-top:4px;color:#cbd5e1;font:700 .62rem/1 ui-monospace,monospace}
     footer{gap:12px;color:var(--muted);font-size:.61rem}#message{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#endpoint{flex:none;color:#617086;font-family:ui-monospace,monospace}
-    @media(orientation:portrait){html,body{overflow:auto}body{min-height:100%}.app{height:auto;min-height:100%;grid-template-rows:42px auto 22px}main{grid-template-columns:minmax(0,1fr) minmax(0,1fr);grid-template-areas:"center center" "left right";gap:14px 10px}.command-panel{display:grid;grid-template-columns:1fr 1fr 1fr}.telemetry{display:none}.pad{width:100%}.stick-name{font-size:.59rem}.stick-value{min-width:0;font-size:.56rem}}
+    @supports(height:100dvh){html,body{height:100dvh}.app{height:100dvh}}
+    @media(orientation:portrait){html,body{overflow:hidden}.app{height:100dvh;min-height:0;grid-template-rows:42px minmax(0,1fr) 22px}main{grid-template-columns:minmax(0,1fr) minmax(0,1fr);grid-template-rows:auto minmax(0,1fr);grid-template-areas:"center center" "left right";gap:14px 10px}.command-panel{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;align-self:start}.flight-state,.command{min-height:58px}.telemetry{display:none}.pad{width:100%}.stick-name{font-size:.59rem}.stick-value{min-width:0;font-size:.56rem}}
+    @media(max-width:480px){.brand-sub{display:none}.fullscreen-button{padding-inline:8px}.link-state{padding-inline:9px;font-size:.62rem}}
     @media(max-height:390px) and (orientation:landscape){.app{grid-template-rows:34px minmax(0,1fr) 18px;gap:5px;padding-top:5px;padding-bottom:5px}.brand-icon{width:28px;height:28px}.brand-sub{display:none}main{grid-template-columns:minmax(210px,1fr) 136px minmax(210px,1fr)}.pad{width:min(100%,calc(100vh - 82px))}.command{min-height:46px}.flight-state{padding:7px}.metric{padding:5px 3px}}
   </style>
 </head>
@@ -36,11 +39,11 @@
   <div class="app">
     <header>
       <div class="brand"><span class="brand-icon">⌁</span><div class="brand-copy"><div class="brand-name">ESP32 FLIGHT</div><div class="brand-sub">DIRECT CONTROL LINK</div></div></div>
-      <div id="linkState" class="link-state"><span class="link-dot"></span><span id="linkText">CHƯA KẾT NỐI</span></div>
+      <div class="header-actions"><button id="fullscreenButton" class="fullscreen-button" type="button" title="Enter fullscreen">FULL</button><div id="linkState" class="link-state"><span class="link-dot"></span><span id="linkText">NOT CONNECTED</span></div></div>
     </header>
     <main>
       <section class="stick-panel left">
-        <div class="stick-head"><span class="stick-name">GA / YAW</span><span id="leftValue" class="stick-value">T 000 · Y +000</span></div>
+        <div class="stick-head"><span class="stick-name">THROTTLE / YAW</span><span id="leftValue" class="stick-value">T 000 · Y +000</span></div>
         <div class="pad-wrap"><div class="pad"><span class="axis top">100%</span><span class="axis bottom">0%</span><span class="axis left">YAW −</span><span class="axis right">YAW +</span><div id="leftStick" class="stick-zone"></div></div></div>
       </section>
       <section class="command-panel">
@@ -55,7 +58,7 @@
         <div class="pad-wrap"><div class="pad"><span class="axis top">PITCH +</span><span class="axis bottom">PITCH −</span><span class="axis left">ROLL −</span><span class="axis right">ROLL +</span><div id="rightStick" class="stick-zone"></div></div></div>
       </section>
     </main>
-    <footer><span id="message">Nhấn CONNECT BLE để chọn ESP32-DRONE</span><span id="endpoint">WEB BLUETOOTH · 20 Hz</span></footer>
+    <footer><span id="message">Press CONNECT BLE to select ESP32-DRONE</span><span id="endpoint">ADAPTIVE TX · 50 Hz HEARTBEAT</span></footer>
   </div>
   <script src="./nipplejs.min.js"></script>
   <script>
@@ -64,9 +67,11 @@
       var SERVICE_UUID='d4f20001-8f69-4b7f-9f5a-6c253728d1a0';
       var CONTROL_UUID='d4f20002-8f69-4b7f-9f5a-6c253728d1a0';
       var TELEMETRY_UUID='d4f20003-8f69-4b7f-9f5a-6c253728d1a0';
+      var TX_INTERVAL_MS=20;
       var state={throttle:0,yaw:0,pitch:0,roll:0,armed:false,seq:0};
-      var ble={device:null,control:null,telemetry:null,connected:false,busy:false};
+      var ble={device:null,control:null,telemetry:null,connected:false,busy:false,pending:null};
       var sent=0,lastRtt=null,pendingTimes=new Map();
+      var nextControlTimer=null,lastControlQueuedAt=0;
       var el=function(id){return document.getElementById(id)};
       function clamp(value,min,max){value=Number(value);return Math.max(min,Math.min(max,isFinite(value)?value:0))}
       function signed(value){var n=Math.round(value*100);return(n>=0?'+':'−')+String(Math.abs(n)).padStart(3,'0')}
@@ -81,8 +86,17 @@
         ble.connected=online;el('linkState').classList.toggle('online',online);el('linkText').textContent=text;
         el('armButton').disabled=!online;el('connectButton').textContent=online?'DISCONNECT':'CONNECT BLE'
       }
+      function fullscreenElement(){return document.fullscreenElement||document.webkitFullscreenElement}
+      function renderFullscreen(){var active=Boolean(fullscreenElement()),button=el('fullscreenButton');button.textContent=active?'EXIT':'FULL';button.title=active?'Exit fullscreen':'Enter fullscreen'}
+      async function toggleFullscreen(){
+        var target=document.documentElement,active=fullscreenElement();
+        try{
+          if(!active){var enter=target.requestFullscreen||target.webkitRequestFullscreen;if(!enter){message('Fullscreen is not supported by this browser.');return}await enter.call(target)}
+          else{var exitFullscreen=document.exitFullscreen||document.webkitExitFullscreen;if(exitFullscreen)await exitFullscreen.call(document)}
+        }catch(error){message('Unable to change fullscreen mode: '+error.message)}
+      }
       function moveData(event,legacy){if(legacy&&legacy.vector)return legacy;if(event&&event.data&&event.data.vector)return event.data;if(event&&event.vector)return event;return null}
-      if(!window.nipplejs||typeof window.nipplejs.create!=='function'){setConnection(false,'LỖI GIAO DIỆN');message('Không tải được NippleJS. Hãy tải lại trang.');return}
+      if(!window.nipplejs||typeof window.nipplejs.create!=='function'){setConnection(false,'UI ERROR');message('NippleJS could not be loaded. Reload the page.');return}
       var pad=Math.min(el('leftStick').clientWidth||260,el('leftStick').clientHeight||260);
       var stickSize=clamp(Math.round(pad*.64),108,170);
       var common={mode:'static',position:{left:'50%',top:'50%'},size:stickSize,threshold:.03,fadeTime:80,restOpacity:1,color:{front:'linear-gradient(145deg,#7dd3fc,#0284c7)',back:'rgba(56,189,248,.14)'}};
@@ -90,10 +104,10 @@
       var right=nipplejs.create(Object.assign({},common,{zone:el('rightStick'),restJoystick:true}));
       function resetThrottle(){var joystick=left.getJoystickByUid();if(joystick)joystick.setPosition(undefined,{x:0,y:stickSize/2})}
       resetThrottle();
-      left.on('move',function(event,legacy){var data=moveData(event,legacy);if(!data)return;state.yaw=clamp(data.vector.x,-1,1);state.throttle=clamp((data.vector.y+1)/2,0,1);render()});
-      left.on('end',function(){state.yaw=0;render()});
-      right.on('move',function(event,legacy){var data=moveData(event,legacy);if(!data)return;state.roll=clamp(data.vector.x,-1,1);state.pitch=clamp(data.vector.y,-1,1);render()});
-      right.on('end',function(){state.roll=0;state.pitch=0;render()});
+      left.on('move',function(event,legacy){var data=moveData(event,legacy);if(!data)return;state.yaw=clamp(data.vector.x,-1,1);state.throttle=clamp((data.vector.y+1)/2,0,1);render();requestControlUpdate()});
+      left.on('end',function(){state.yaw=0;render();requestControlUpdate()});
+      right.on('move',function(event,legacy){var data=moveData(event,legacy);if(!data)return;state.roll=clamp(data.vector.x,-1,1);state.pitch=clamp(data.vector.y,-1,1);render();requestControlUpdate()});
+      right.on('end',function(){state.roll=0;state.pitch=0;render();requestControlUpdate()});
 
       function crc16(bytes,length){
         var crc=0xffff;
@@ -112,16 +126,37 @@
         view.setUint16(12,crc16(bytes,12),true);return buffer
       }
 
-      async function sendControl(emergency,withResponse){
-        if(!ble.connected||!ble.control||ble.busy)return false;
-        ble.busy=true;var packet=makePacket(Boolean(emergency)),seq=state.seq;
+      function sendControl(emergency,withResponse){
+        if(!ble.connected||!ble.control)return Promise.resolve(false);
+        return new Promise(function(resolve){
+          if(!ble.pending)ble.pending={emergency:false,withResponse:false,waiters:[]};
+          ble.pending.emergency=ble.pending.emergency||Boolean(emergency);
+          ble.pending.withResponse=ble.pending.withResponse||Boolean(withResponse);
+          ble.pending.waiters.push(resolve);flushControlQueue()
+        })
+      }
+
+      function requestControlUpdate(){
+        if(!ble.connected||!ble.control)return;
+        var now=performance.now(),delay=Math.max(0,TX_INTERVAL_MS-(now-lastControlQueuedAt));
+        if(delay===0){lastControlQueuedAt=now;sendControl(false,false);return}
+        if(nextControlTimer===null)nextControlTimer=setTimeout(function(){nextControlTimer=null;requestControlUpdate()},delay)
+      }
+
+      async function flushControlQueue(){
+        if(ble.busy||!ble.pending||!ble.connected||!ble.control)return;
+        var job=ble.pending;ble.pending=null;ble.busy=true;
+        var packet=makePacket(job.emergency),seq=state.seq,success=false;
         pendingTimes.set(seq,performance.now());
         try{
-          if(!withResponse&&ble.control.properties.writeWithoutResponse&&ble.control.writeValueWithoutResponse)await ble.control.writeValueWithoutResponse(packet);
+          if(!job.withResponse&&ble.control.properties.writeWithoutResponse&&ble.control.writeValueWithoutResponse)await ble.control.writeValueWithoutResponse(packet);
           else await ble.control.writeValue(packet);
-          sent++;return true
-        }catch(error){message('Gửi BLE thất bại: '+error.message);return false}
-        finally{ble.busy=false}
+          sent++;success=true
+        }catch(error){message('BLE send failed: '+error.message)}
+        finally{
+          ble.busy=false;job.waiters.forEach(function(resolve){resolve(success)});
+          if(ble.pending)flushControlQueue()
+        }
       }
 
       function onTelemetry(event){
@@ -131,50 +166,55 @@
         var flags=view.getUint8(1),seq=view.getUint16(2,true),started=pendingTimes.get(seq);
         if(started!==undefined){lastRtt=Math.max(0,Math.round(performance.now()-started));el('rtt').textContent=lastRtt+' ms';pendingTimes.delete(seq)}
         pendingTimes.forEach(function(value,key){if(performance.now()-value>2000)pendingTimes.delete(key)});
-        if(flags&4){state.armed=false;render();message('ESP32 từ chối ARM: ga phải ≤ 5%')}
-        if((flags&2)&&state.armed){state.armed=false;render();message('ESP32 đang FAILSAFE — hệ thống SAFE')}
+        if(flags&4){state.armed=false;render();message('ESP32 rejected ARM: throttle must be ≤ 5%')}
+        if((flags&2)&&state.armed){state.armed=false;render();message('ESP32 FAILSAFE active — system is SAFE')}
       }
 
       function onDisconnected(){
-        ble.connected=false;ble.control=null;ble.telemetry=null;ble.busy=false;pendingTimes.clear();
-        state.armed=false;render();setConnection(false,'MẤT LINK');message('Mất Bluetooth — ESP32 đã tự động DISARM')
+        if(ble.pending)ble.pending.waiters.forEach(function(resolve){resolve(false)});
+        if(nextControlTimer!==null)clearTimeout(nextControlTimer);nextControlTimer=null;lastControlQueuedAt=0;
+        ble.connected=false;ble.control=null;ble.telemetry=null;ble.busy=false;ble.pending=null;pendingTimes.clear();
+        state.armed=false;render();setConnection(false,'LINK LOST');message('Bluetooth disconnected — ESP32 was automatically DISARMED')
       }
 
       async function connect(){
-        if(!navigator.bluetooth){message('Trình duyệt không hỗ trợ Web Bluetooth. Dùng Chrome/Edge trên Android hoặc máy tính.');return}
+        if(!navigator.bluetooth){message('Web Bluetooth is unavailable. Use Chrome or Edge on Android or desktop.');return}
         if(ble.connected){await stop();if(ble.device&&ble.device.gatt.connected)ble.device.gatt.disconnect();return}
-        setConnection(false,'ĐANG CHỌN');message('Chọn thiết bị ESP32-DRONE trong hộp thoại Bluetooth…');
+        setConnection(false,'SELECT DEVICE');message('Select ESP32-DRONE in the Bluetooth device picker…');
         try{
           ble.device=await navigator.bluetooth.requestDevice({filters:[{services:[SERVICE_UUID]}]});
           ble.device.addEventListener('gattserverdisconnected',onDisconnected);
-          setConnection(false,'ĐANG KẾT NỐI');
+          setConnection(false,'CONNECTING');
           var server=await ble.device.gatt.connect(),service=await server.getPrimaryService(SERVICE_UUID);
           ble.control=await service.getCharacteristic(CONTROL_UUID);ble.telemetry=await service.getCharacteristic(TELEMETRY_UUID);
           await ble.telemetry.startNotifications();ble.telemetry.addEventListener('characteristicvaluechanged',onTelemetry);
-          setConnection(true,'BLE OK');message('Đã kết nối '+(ble.device.name||'ESP32-DRONE')+' — hệ thống SAFE');await sendControl(true,true)
+          setConnection(true,'BLE OK');message('Connected to '+(ble.device.name||'ESP32-DRONE')+' — system is SAFE');await sendControl(true,true)
         }catch(error){
           if(ble.device&&ble.device.gatt.connected)ble.device.gatt.disconnect();
-          setConnection(false,'CHƯA KẾT NỐI');message(error.name==='NotFoundError'?'Đã hủy chọn thiết bị':'Không thể kết nối BLE: '+error.message)
+          setConnection(false,'NOT CONNECTED');message(error.name==='NotFoundError'?'Device selection was canceled':'BLE connection failed: '+error.message)
         }
       }
 
       async function stop(){
         state.throttle=0;state.yaw=0;state.pitch=0;state.roll=0;state.armed=false;resetThrottle();render();
-        await sendControl(true,true);message('STOP — ga 0%, hệ thống SAFE')
+        await sendControl(true,true);message('STOP — throttle 0%, system is SAFE')
       }
 
       el('connectButton').addEventListener('click',connect);
+      el('fullscreenButton').addEventListener('click',toggleFullscreen);
       el('armButton').addEventListener('click',async function(){
-        if(!state.armed&&state.throttle>.05){message('Hạ ga về 0% trước khi ARM');return}
-        state.armed=!state.armed;render();await sendControl(false,true);message(state.armed?'ARMED — điều khiển đang hoạt động':'DISARMED — hệ thống SAFE')
+        if(!state.armed&&state.throttle>.05){message('Lower throttle to 0% before ARMING');return}
+        state.armed=!state.armed;render();await sendControl(false,true);message(state.armed?'ARMED — controls are active':'DISARMED — system is SAFE')
       });
       el('stopButton').addEventListener('click',stop);
-      setInterval(function(){sendControl(false,false)},50);
+      document.addEventListener('fullscreenchange',renderFullscreen);
+      document.addEventListener('webkitfullscreenchange',renderFullscreen);
+      setInterval(requestControlUpdate,TX_INTERVAL_MS);
       setInterval(function(){el('txRate').textContent=sent+' Hz';sent=0;if(lastRtt===null)el('rtt').textContent='-- ms'},1000);
-      window.addEventListener('error',function(event){message('Lỗi giao diện: '+event.message)});
+      window.addEventListener('error',function(event){message('Interface error: '+event.message)});
       document.addEventListener('visibilitychange',function(){if(document.hidden&&state.armed)stop()});
       window.addEventListener('pagehide',function(){state.armed=false;sendControl(true,false)});
-      render();setConnection(false,'CHƯA KẾT NỐI');
+      render();renderFullscreen();setConnection(false,'NOT CONNECTED');
     })();
   </script>
 </body>

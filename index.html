@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+  <meta name="theme-color" content="#080b10">
+  <link rel="icon" href="data:,">
+  <title>ESP32 Flight Control</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: Inter,ui-sans-serif,system-ui,-apple-system,sans-serif;
+      --bg:#080b10;--panel:#111720;--line:#293547;--text:#f1f5f9;
+      --muted:#8492a6;--blue:#38bdf8;--green:#4ade80;--amber:#fbbf24;--red:#fb4e68;
+    }
+    *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+    html,body{width:100%;height:100%;margin:0;overflow:hidden}
+    body{color:var(--text);user-select:none;touch-action:none;background:radial-gradient(circle at 50% 115%,rgba(56,189,248,.11),transparent 44%),var(--bg)}
+    button{font:inherit}
+    .app{width:100%;height:100%;display:grid;grid-template-rows:42px minmax(0,1fr) 22px;gap:8px;padding:max(8px,env(safe-area-inset-top)) max(12px,env(safe-area-inset-right)) max(8px,env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left))}
+    header,footer{display:flex;align-items:center;justify-content:space-between;min-width:0}
+    .brand{display:flex;align-items:center;gap:10px}.brand-icon{width:32px;height:32px;display:grid;place-items:center;border:1px solid #334155;border-radius:10px;background:linear-gradient(145deg,#172231,#0d1219);color:var(--blue);font-size:17px}.brand-copy{line-height:1}.brand-name{font-size:.86rem;font-weight:850;letter-spacing:.09em}.brand-sub{margin-top:5px;color:var(--muted);font-size:.58rem;letter-spacing:.12em}
+    .link-state{display:flex;align-items:center;gap:8px;min-width:0;padding:7px 11px;border:1px solid var(--line);border-radius:999px;background:rgba(17,23,32,.85);color:var(--muted);font-size:.7rem;font-weight:700}.link-dot{width:7px;height:7px;flex:none;border-radius:50%;color:var(--red);background:currentColor;box-shadow:0 0 10px currentColor}.link-state.online{color:var(--green);border-color:rgba(74,222,128,.28)}#linkText{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    main{min-height:0;display:grid;grid-template-columns:minmax(230px,1fr) 150px minmax(230px,1fr);grid-template-areas:"left center right";align-items:stretch;gap:clamp(10px,2vw,24px)}
+    .stick-panel{min-width:0;display:grid;grid-template-rows:auto minmax(0,1fr);gap:6px}.stick-panel.left{grid-area:left}.stick-panel.right{grid-area:right}.stick-head{display:flex;align-items:center;justify-content:space-between;padding:0 4px}.stick-name{color:#b9c5d4;font-size:.7rem;font-weight:800;letter-spacing:.13em}.stick-value{min-width:102px;color:var(--blue);font:700 .68rem/1 ui-monospace,monospace;text-align:right}
+    .pad-wrap{min-height:0;display:grid;place-items:center}.pad{position:relative;width:min(100%,calc(100vh - 102px));max-width:330px;aspect-ratio:1;border:1px solid #2a3545;border-radius:50%;overflow:hidden;background:radial-gradient(circle,transparent 0 24%,rgba(56,189,248,.05) 24.5% 25%,transparent 25.5% 49%,rgba(56,189,248,.06) 49.5% 50%,transparent 50.5%),linear-gradient(90deg,transparent calc(50% - .5px),#263141 50%,transparent calc(50% + .5px)),linear-gradient(0deg,transparent calc(50% - .5px),#263141 50%,transparent calc(50% + .5px)),radial-gradient(circle at 50% 45%,#141c27,#0d1219 72%);box-shadow:inset 0 0 44px rgba(0,0,0,.32),0 10px 35px rgba(0,0,0,.18)}.pad:after{content:"";position:absolute;inset:12%;border:1px dashed rgba(132,146,166,.13);border-radius:50%;pointer-events:none}.stick-zone{position:absolute;inset:0;z-index:2}.axis{position:absolute;z-index:1;color:#66758a;font-size:.56rem;font-weight:800;letter-spacing:.08em;pointer-events:none}.axis.top{top:12px;left:50%;transform:translateX(-50%)}.axis.bottom{bottom:12px;left:50%;transform:translateX(-50%)}.axis.left{left:12px;top:50%;transform:translateY(-50%)}.axis.right{right:12px;top:50%;transform:translateY(-50%)}
+    .command-panel{grid-area:center;min-height:0;display:flex;flex-direction:column;justify-content:center;gap:8px}.flight-state{padding:9px 8px;border:1px solid var(--line);border-radius:12px;background:var(--panel);text-align:center}.flight-state small{display:block;color:var(--muted);font-size:.54rem;font-weight:800;letter-spacing:.14em}.flight-state strong{display:block;margin-top:5px;color:var(--green);font-size:.78rem;letter-spacing:.1em}body.armed .flight-state{border-color:rgba(251,191,36,.42);background:rgba(251,191,36,.08)}body.armed .flight-state strong{color:var(--amber)}
+    .command{appearance:none;width:100%;min-height:48px;border:1px solid var(--line);border-radius:13px;background:linear-gradient(180deg,#18212d,#10161e);color:var(--text);font-size:.7rem;font-weight:900;letter-spacing:.12em;cursor:pointer;touch-action:manipulation;box-shadow:inset 0 1px rgba(255,255,255,.04),0 4px 14px rgba(0,0,0,.22)}.command:active{transform:translateY(1px)}.command:disabled{opacity:.35}#connectButton{color:var(--blue);border-color:rgba(56,189,248,.4)}#armButton{color:var(--green);border-color:rgba(74,222,128,.34)}body.armed #armButton{color:#10120b;border-color:var(--amber);background:var(--amber)}#stopButton{color:#fff;border-color:#d93650;background:linear-gradient(180deg,#e9445d,#bc2941)}
+    .telemetry{display:grid;grid-template-columns:1fr 1fr;gap:5px}.metric{min-width:0;padding:7px 4px;border:1px solid #202a38;border-radius:9px;background:rgba(17,23,32,.72);text-align:center}.metric span{display:block;color:var(--muted);font-size:.48rem;font-weight:800;letter-spacing:.1em}.metric b{display:block;margin-top:4px;color:#cbd5e1;font:700 .62rem/1 ui-monospace,monospace}
+    footer{gap:12px;color:var(--muted);font-size:.61rem}#message{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#endpoint{flex:none;color:#617086;font-family:ui-monospace,monospace}
+    @media(orientation:portrait){html,body{overflow:auto}body{min-height:100%}.app{height:auto;min-height:100%;grid-template-rows:42px auto 22px}main{grid-template-columns:minmax(0,1fr) minmax(0,1fr);grid-template-areas:"center center" "left right";gap:14px 10px}.command-panel{display:grid;grid-template-columns:1fr 1fr 1fr}.telemetry{display:none}.pad{width:100%}.stick-name{font-size:.59rem}.stick-value{min-width:0;font-size:.56rem}}
+    @media(max-height:390px) and (orientation:landscape){.app{grid-template-rows:34px minmax(0,1fr) 18px;gap:5px;padding-top:5px;padding-bottom:5px}.brand-icon{width:28px;height:28px}.brand-sub{display:none}main{grid-template-columns:minmax(210px,1fr) 136px minmax(210px,1fr)}.pad{width:min(100%,calc(100vh - 82px))}.command{min-height:46px}.flight-state{padding:7px}.metric{padding:5px 3px}}
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <div class="brand"><span class="brand-icon">⌁</span><div class="brand-copy"><div class="brand-name">ESP32 FLIGHT</div><div class="brand-sub">DIRECT CONTROL LINK</div></div></div>
+      <div id="linkState" class="link-state"><span class="link-dot"></span><span id="linkText">CHƯA KẾT NỐI</span></div>
+    </header>
+    <main>
+      <section class="stick-panel left">
+        <div class="stick-head"><span class="stick-name">GA / YAW</span><span id="leftValue" class="stick-value">T 000 · Y +000</span></div>
+        <div class="pad-wrap"><div class="pad"><span class="axis top">100%</span><span class="axis bottom">0%</span><span class="axis left">YAW −</span><span class="axis right">YAW +</span><div id="leftStick" class="stick-zone"></div></div></div>
+      </section>
+      <section class="command-panel">
+        <div class="flight-state"><small>FLIGHT STATE</small><strong id="flightState">SAFE</strong></div>
+        <button id="connectButton" class="command">CONNECT BLE</button>
+        <button id="armButton" class="command" disabled>ARM</button>
+        <button id="stopButton" class="command">STOP</button>
+        <div class="telemetry"><div class="metric"><span>TX</span><b id="txRate">0 Hz</b></div><div class="metric"><span>RTT</span><b id="rtt">-- ms</b></div></div>
+      </section>
+      <section class="stick-panel right">
+        <div class="stick-head"><span class="stick-name">ROLL / PITCH</span><span id="rightValue" class="stick-value">R +000 · P +000</span></div>
+        <div class="pad-wrap"><div class="pad"><span class="axis top">PITCH +</span><span class="axis bottom">PITCH −</span><span class="axis left">ROLL −</span><span class="axis right">ROLL +</span><div id="rightStick" class="stick-zone"></div></div></div>
+      </section>
+    </main>
+    <footer><span id="message">Nhấn CONNECT BLE để chọn ESP32-DRONE</span><span id="endpoint">WEB BLUETOOTH · 20 Hz</span></footer>
+  </div>
+  <script src="./nipplejs.min.js"></script>
+  <script>
+    (function(){
+      'use strict';
+      var SERVICE_UUID='d4f20001-8f69-4b7f-9f5a-6c253728d1a0';
+      var CONTROL_UUID='d4f20002-8f69-4b7f-9f5a-6c253728d1a0';
+      var TELEMETRY_UUID='d4f20003-8f69-4b7f-9f5a-6c253728d1a0';
+      var state={throttle:0,yaw:0,pitch:0,roll:0,armed:false,seq:0};
+      var ble={device:null,control:null,telemetry:null,connected:false,busy:false};
+      var sent=0,lastRtt=null,pendingTimes=new Map();
+      var el=function(id){return document.getElementById(id)};
+      function clamp(value,min,max){value=Number(value);return Math.max(min,Math.min(max,isFinite(value)?value:0))}
+      function signed(value){var n=Math.round(value*100);return(n>=0?'+':'−')+String(Math.abs(n)).padStart(3,'0')}
+      function message(text){el('message').textContent=text}
+      function render(){
+        el('leftValue').textContent='T '+String(Math.round(state.throttle*100)).padStart(3,'0')+' · Y '+signed(state.yaw);
+        el('rightValue').textContent='R '+signed(state.roll)+' · P '+signed(state.pitch);
+        el('flightState').textContent=state.armed?'ARMED':'SAFE';el('armButton').textContent=state.armed?'DISARM':'ARM';
+        document.body.classList.toggle('armed',state.armed)
+      }
+      function setConnection(online,text){
+        ble.connected=online;el('linkState').classList.toggle('online',online);el('linkText').textContent=text;
+        el('armButton').disabled=!online;el('connectButton').textContent=online?'DISCONNECT':'CONNECT BLE'
+      }
+      function moveData(event,legacy){if(legacy&&legacy.vector)return legacy;if(event&&event.data&&event.data.vector)return event.data;if(event&&event.vector)return event;return null}
+      if(!window.nipplejs||typeof window.nipplejs.create!=='function'){setConnection(false,'LỖI GIAO DIỆN');message('Không tải được NippleJS. Hãy tải lại trang.');return}
+      var pad=Math.min(el('leftStick').clientWidth||260,el('leftStick').clientHeight||260);
+      var stickSize=clamp(Math.round(pad*.64),108,170);
+      var common={mode:'static',position:{left:'50%',top:'50%'},size:stickSize,threshold:.03,fadeTime:80,restOpacity:1,color:{front:'linear-gradient(145deg,#7dd3fc,#0284c7)',back:'rgba(56,189,248,.14)'}};
+      var left=nipplejs.create(Object.assign({},common,{zone:el('leftStick'),restJoystick:{x:true,y:false}}));
+      var right=nipplejs.create(Object.assign({},common,{zone:el('rightStick'),restJoystick:true}));
+      function resetThrottle(){var joystick=left.getJoystickByUid();if(joystick)joystick.setPosition(undefined,{x:0,y:stickSize/2})}
+      resetThrottle();
+      left.on('move',function(event,legacy){var data=moveData(event,legacy);if(!data)return;state.yaw=clamp(data.vector.x,-1,1);state.throttle=clamp((data.vector.y+1)/2,0,1);render()});
+      left.on('end',function(){state.yaw=0;render()});
+      right.on('move',function(event,legacy){var data=moveData(event,legacy);if(!data)return;state.roll=clamp(data.vector.x,-1,1);state.pitch=clamp(data.vector.y,-1,1);render()});
+      right.on('end',function(){state.roll=0;state.pitch=0;render()});
+
+      function crc16(bytes,length){
+        var crc=0xffff;
+        for(var i=0;i<length;i++){crc^=bytes[i]<<8;for(var bit=0;bit<8;bit++)crc=(crc&0x8000)?((crc<<1)^0x1021)&0xffff:(crc<<1)&0xffff}
+        return crc
+      }
+
+      function makePacket(emergency){
+        state.seq=(state.seq+1)&0xffff;
+        var buffer=new ArrayBuffer(14),view=new DataView(buffer),bytes=new Uint8Array(buffer);
+        view.setUint8(0,1);view.setUint8(1,(state.armed?1:0)|(emergency?2:0));view.setUint16(2,state.seq,true);
+        view.setUint16(4,Math.round(clamp(state.throttle,0,1)*1000),true);
+        view.setInt16(6,Math.round(clamp(state.yaw,-1,1)*1000),true);
+        view.setInt16(8,Math.round(clamp(state.pitch,-1,1)*1000),true);
+        view.setInt16(10,Math.round(clamp(state.roll,-1,1)*1000),true);
+        view.setUint16(12,crc16(bytes,12),true);return buffer
+      }
+
+      async function sendControl(emergency,withResponse){
+        if(!ble.connected||!ble.control||ble.busy)return false;
+        ble.busy=true;var packet=makePacket(Boolean(emergency)),seq=state.seq;
+        pendingTimes.set(seq,performance.now());
+        try{
+          if(!withResponse&&ble.control.properties.writeWithoutResponse&&ble.control.writeValueWithoutResponse)await ble.control.writeValueWithoutResponse(packet);
+          else await ble.control.writeValue(packet);
+          sent++;return true
+        }catch(error){message('Gửi BLE thất bại: '+error.message);return false}
+        finally{ble.busy=false}
+      }
+
+      function onTelemetry(event){
+        var view=event.target.value;if(view.byteLength!==8)return;
+        var bytes=new Uint8Array(view.buffer,view.byteOffset,view.byteLength);
+        if(view.getUint8(0)!==1||view.getUint16(6,true)!==crc16(bytes,6))return;
+        var flags=view.getUint8(1),seq=view.getUint16(2,true),started=pendingTimes.get(seq);
+        if(started!==undefined){lastRtt=Math.max(0,Math.round(performance.now()-started));el('rtt').textContent=lastRtt+' ms';pendingTimes.delete(seq)}
+        pendingTimes.forEach(function(value,key){if(performance.now()-value>2000)pendingTimes.delete(key)});
+        if(flags&4){state.armed=false;render();message('ESP32 từ chối ARM: ga phải ≤ 5%')}
+        if((flags&2)&&state.armed){state.armed=false;render();message('ESP32 đang FAILSAFE — hệ thống SAFE')}
+      }
+
+      function onDisconnected(){
+        ble.connected=false;ble.control=null;ble.telemetry=null;ble.busy=false;pendingTimes.clear();
+        state.armed=false;render();setConnection(false,'MẤT LINK');message('Mất Bluetooth — ESP32 đã tự động DISARM')
+      }
+
+      async function connect(){
+        if(!navigator.bluetooth){message('Trình duyệt không hỗ trợ Web Bluetooth. Dùng Chrome/Edge trên Android hoặc máy tính.');return}
+        if(ble.connected){await stop();if(ble.device&&ble.device.gatt.connected)ble.device.gatt.disconnect();return}
+        setConnection(false,'ĐANG CHỌN');message('Chọn thiết bị ESP32-DRONE trong hộp thoại Bluetooth…');
+        try{
+          ble.device=await navigator.bluetooth.requestDevice({filters:[{services:[SERVICE_UUID]}]});
+          ble.device.addEventListener('gattserverdisconnected',onDisconnected);
+          setConnection(false,'ĐANG KẾT NỐI');
+          var server=await ble.device.gatt.connect(),service=await server.getPrimaryService(SERVICE_UUID);
+          ble.control=await service.getCharacteristic(CONTROL_UUID);ble.telemetry=await service.getCharacteristic(TELEMETRY_UUID);
+          await ble.telemetry.startNotifications();ble.telemetry.addEventListener('characteristicvaluechanged',onTelemetry);
+          setConnection(true,'BLE OK');message('Đã kết nối '+(ble.device.name||'ESP32-DRONE')+' — hệ thống SAFE');await sendControl(true,true)
+        }catch(error){
+          if(ble.device&&ble.device.gatt.connected)ble.device.gatt.disconnect();
+          setConnection(false,'CHƯA KẾT NỐI');message(error.name==='NotFoundError'?'Đã hủy chọn thiết bị':'Không thể kết nối BLE: '+error.message)
+        }
+      }
+
+      async function stop(){
+        state.throttle=0;state.yaw=0;state.pitch=0;state.roll=0;state.armed=false;resetThrottle();render();
+        await sendControl(true,true);message('STOP — ga 0%, hệ thống SAFE')
+      }
+
+      el('connectButton').addEventListener('click',connect);
+      el('armButton').addEventListener('click',async function(){
+        if(!state.armed&&state.throttle>.05){message('Hạ ga về 0% trước khi ARM');return}
+        state.armed=!state.armed;render();await sendControl(false,true);message(state.armed?'ARMED — điều khiển đang hoạt động':'DISARMED — hệ thống SAFE')
+      });
+      el('stopButton').addEventListener('click',stop);
+      setInterval(function(){sendControl(false,false)},50);
+      setInterval(function(){el('txRate').textContent=sent+' Hz';sent=0;if(lastRtt===null)el('rtt').textContent='-- ms'},1000);
+      window.addEventListener('error',function(event){message('Lỗi giao diện: '+event.message)});
+      document.addEventListener('visibilitychange',function(){if(document.hidden&&state.armed)stop()});
+      window.addEventListener('pagehide',function(){state.armed=false;sendControl(true,false)});
+      render();setConnection(false,'CHƯA KẾT NỐI');
+    })();
+  </script>
+</body>
+</html>

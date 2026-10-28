@@ -1,119 +1,7 @@
-// Run without dependencies: node --test tests/controller.test.mjs
+// Run without dependencies: node --test tests/*.test.mjs
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
 import test from 'node:test';
-import vm from 'node:vm';
-
-const html = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8');
-const source = [...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g)]
-  .map(match => match[1]).find(script => script.includes('function makePacket'));
-const entry = "render();renderFullscreen();setConnection(false,'NOT CONNECTED');";
-assert.ok(source.includes(entry), 'Controller entry point must exist');
-
-function deferred() {
-  let resolve, reject;
-  const promise = new Promise((yes, no) => { resolve = yes; reject = no; });
-  return {promise, resolve, reject};
-}
-
-const tick = async () => { for (let i = 0; i < 12; i++) await Promise.resolve(); };
-
-function node(id) {
-  const classes = new Set();
-  return {
-    id, textContent: id === 'rtt' ? '-- ms' : id === 'txRate' ? '0 Hz' : '',
-    disabled: false, style: {}, clientWidth: 200, clientHeight: 240,
-    listeners: new Map(), classList: {toggle(name, enabled) {
-      enabled ? classes.add(name) : classes.delete(name);
-    }},
-    addEventListener(type, fn) { this.listeners.set(type, fn); },
-    removeEventListener(type, fn) { if (this.listeners.get(type) === fn) this.listeners.delete(type); }
-  };
-}
-
-function load(config = {}) {
-  const elements = new Map(), managers = [], intervals = [], frames = new Map();
-  let now = 100, frameId = 0;
-  const element = id => {
-    if (!elements.has(id)) elements.set(id, node(id));
-    return elements.get(id);
-  };
-  for (const id of ['leftStick', 'rightStick']) {
-    element(id).parentElement = node(id + '-pad');
-    element(id).parentElement.parentElement = node(id + '-wrap');
-    element(id).clientHeight = 200;
-  }
-  const window = {
-    FLIGHT_CONTROL_CONFIG: config,
-    matchMedia: query => ({matches: query.includes('landscape')}),
-    addEventListener() {},
-    nipplejs: {create(options) {
-      const joystick = {
-        options: {...options}, ui: {back: node('back'), front: node('front')},
-        setPosition(_, position) { this.frontPosition = position; }
-      };
-      const manager = {options: {...options}, joystick, handlers: {},
-        getJoystickByUid: () => joystick,
-        on(type, fn) { this.handlers[type] = fn; }
-      };
-      managers.push(manager);
-      return manager;
-    }}
-  };
-  const context = {
-    window, nipplejs: window.nipplejs,
-    document: {getElementById: element, body: node('body'), documentElement: node('html'), addEventListener() {}},
-    navigator: {bluetooth: {}}, performance: {now: () => now},
-    requestAnimationFrame: fn => { frames.set(++frameId, fn); return frameId; },
-    cancelAnimationFrame: id => frames.delete(id),
-    setTimeout: () => 1, clearTimeout() {},
-    setInterval: (fn, ms) => { intervals.push({fn, ms}); return intervals.length; },
-    console
-  };
-  const exports = 'window.__test={state,ble,pendingTimes,sendControl,connect,onDisconnected,onTelemetry,stop,toggleArm,makePacket,crc16,updateMetrics,TX_INTERVAL_MS};';
-  vm.runInNewContext(source.replace(entry, exports + entry), context);
-  return {...window.__test, context, element, managers, intervals,
-    setTime: time => { now = time; },
-    flushFrames() {
-      const callbacks = [...frames.values()]; frames.clear(); callbacks.forEach(fn => fn());
-    },
-    get frameCount() { return frames.size; }
-  };
-}
-
-function characteristic(write = async () => {}) {
-  return {properties: {write: true, writeWithoutResponse: true},
-    writeValue: write, writeValueWithResponse: write, writeValueWithoutResponse: write};
-}
-
-function attach(app, control = characteristic()) {
-  app.ble.connected = true;
-  app.ble.control = control;
-}
-
-function telemetry(app, flags = 0, seq = app.state.seq, corrupt = false) {
-  const bytes = new Uint8Array(8), view = new DataView(bytes.buffer);
-  view.setUint8(0, 1); view.setUint8(1, flags); view.setUint16(2, seq, true);
-  view.setUint16(6, app.crc16(bytes, 6) ^ Number(corrupt), true);
-  return {target: {value: view}};
-}
-
-function device(app, control = characteristic(), getService) {
-  const result = node('device'), notifications = node('telemetry');
-  notifications.startNotifications = async () => notifications;
-  result.name = 'Test controller';
-  result.gatt = {
-    connected: false,
-    connect: async () => { result.gatt.connected = true; return result.gatt; },
-    getPrimaryService: getService || (async () => ({getCharacteristic: async uuid =>
-      uuid.includes('0002-') ? control : notifications})),
-    disconnect() {
-      result.gatt.connected = false;
-      result.listeners.get('gattserverdisconnected')?.({target: result});
-    }
-  };
-  return {device: result, notifications};
-}
+import {load, deferred, tick, characteristic, attach, telemetry, device} from './helpers.mjs';
 
 test('wire format, CRC, axis order and default heartbeat remain compatible', () => {
   const app = load();
@@ -122,69 +10,128 @@ test('wire format, CRC, axis order and default heartbeat remain compatible', () 
   const packet = new DataView(app.makePacket(false));
   assert.equal(packet.byteLength, 14);
   assert.deepEqual([...new Uint8Array(packet.buffer).slice(0, 12)],
-    [1, 1, 0x34, 0x12, 0xf4, 1, 6, 0xff, 0xee, 2, 0x18, 0xfc]);
+    [1, 0, 0x34, 0x12, 0xf4, 1, 6, 0xff, 0xee, 2, 0x18, 0xfc]);
   assert.equal(app.TX_INTERVAL_MS, 20);
   assert.ok(app.intervals.some(timer => timer.ms === 20));
   app.state.seq = 65535;
   assert.equal(new DataView(app.makePacket(true)).getUint16(2, true), 0);
 });
 
-test('failed ARM rolls back intent and failed STOP never announces remote safety', async () => {
-  const app = load();
-  attach(app, characteristic(async () => { throw new Error('GATT failed'); }));
-  assert.equal(await app.toggleArm(), false);
-  assert.equal(app.state.armed, false);
-  assert.match(app.element('message').textContent, /ARM could not be sent/);
+test('optional ARM mode preserves the ON/OFF switch without waiting for telemetry', async () => {
+  const app = load({requireArm: true}), packets = [];
+  attach(app, characteristic(async packet => packets.push(new DataView(packet))));
+  Object.assign(app.state, {throttle: .9, yaw: .2, pitch: -.3, roll: .4});
+  assert.equal(await app.toggleArm(), true);
+  assert.equal(app.state.armed, true);
+  assert.equal(app.element('armButton').textContent, 'ARM ON');
+  assert.equal(app.element('armButton').disabled, false);
   assert.equal(app.element('flightState').textContent, 'UNKNOWN');
-  app.state.throttle = .7;
-  assert.equal(await app.stop(), false);
-  assert.equal(app.state.throttle, 0);
-  assert.match(app.element('message').textContent, /STOP could not be sent/);
-  assert.doesNotMatch(app.element('message').textContent, /system is SAFE/);
+  assert.equal(packets.length, 1);
+  assert.equal(packets[0].getUint8(1), 1);
+  assert.equal(packets[0].getUint16(4, true), 900);
+  assert.equal(await app.toggleArm(), true);
+  assert.equal(app.element('armButton').textContent, 'ARM OFF');
+  assert.equal(packets.length, 2);
+  assert.equal(packets[1].getUint8(1), 0);
+  assert.equal(packets[1].getUint16(4, true), 900);
+  assert.equal(app.state.pitch, -.3, 'the switch must not reset joystick input');
 });
 
-test('ARM remains pending until write completion and only telemetry confirms ARMED', async () => {
-  const app = load(), write = deferred();
-  attach(app, characteristic(() => write.promise));
-  const arm = app.toggleArm();
-  assert.equal(app.element('flightState').textContent, 'ARMING');
-  assert.equal(app.element('armButton').disabled, true);
-  assert.equal(await app.toggleArm(), false);
-  write.resolve();
-  assert.equal(await arm, true);
-  assert.equal(app.element('flightState').textContent, 'ARM SENT');
-  app.onTelemetry(telemetry(app, 1));
+test('telemetry reports the drone state without changing the switch or sending commands', async () => {
+  const app = load({requireArm: true}), packets = [];
+  attach(app, characteristic(async packet => packets.push(packet)));
+  await app.toggleArm();
+  for (const [flags, label] of [[4, 'REJECTED'], [2, 'FAILSAFE'], [0, 'SAFE'], [1, 'ARMED']]) {
+    app.onTelemetry(telemetry(app, flags));
+    assert.equal(app.element('flightState').textContent, label);
+    assert.equal(app.state.armed, true);
+    assert.equal(app.element('armButton').textContent, 'ARM ON');
+    assert.equal(packets.length, 1);
+  }
+  app.onTelemetry(telemetry(app, 4, app.state.seq, true));
   assert.equal(app.element('flightState').textContent, 'ARMED');
 });
 
-test('controller rejection is not overwritten by a late ARM completion', async () => {
-  const app = load(), write = deferred();
-  attach(app, characteristic(() => write.promise));
-  const arm = app.toggleArm();
-  app.onTelemetry(telemetry(app, 4));
-  const rejection = app.element('message').textContent;
-  write.resolve();
-  assert.equal(await arm, false);
-  assert.equal(app.state.armed, false);
-  assert.equal(app.element('message').textContent, rejection);
+test('lost telemetry clears statistics and status but does not turn off the switch', async () => {
+  const app = load({requireArm: true}), packets = [];
+  attach(app, characteristic(async packet => packets.push(new Uint8Array(packet))));
+  await app.toggleArm();
+  app.onTelemetry(telemetry(app, 1));
+  app.setTime(2600); app.updateMetrics(); await app.runTimers();
+  assert.equal(app.element('flightState').textContent, 'UNKNOWN');
+  assert.equal(app.element('rtt').textContent, '-- ms');
+  assert.equal(app.state.armed, true);
+  assert.equal(packets.length, 1);
+  await app.sendControl(false, false);
+  assert.equal(packets.at(-1)[1], 1);
 });
 
-test('STOP overrides an in-flight ARM and resets both thumb positions', async () => {
-  const app = load(), writes = [];
-  attach(app, characteristic(() => { const write = deferred(); writes.push(write); return write.promise; }));
-  const arm = app.toggleArm();
-  app.state.roll = .7; app.state.pitch = .4;
-  app.managers[1].joystick.setPosition(null, {x: 50, y: -30});
-  const stop = app.stop();
-  assert.equal(app.managers[1].joystick.frontPosition.x, 0);
-  assert.equal(Math.abs(app.managers[1].joystick.frontPosition.y), 0);
-  assert.equal(app.element('connectButton').disabled, true);
+test('rapid toggles keep the latest switch value while writes remain serialized', async () => {
+  const app = load({requireArm: true}), writes = [];
+  attach(app, characteristic(packet => {
+    const held = deferred(); writes.push({packet: new Uint8Array(packet), ...held}); return held.promise;
+  }));
+  const first = app.toggleArm();
+  assert.equal(app.element('armButton').disabled, false);
+  const superseded = app.toggleArm();
+  const latest = app.toggleArm();
+  assert.equal(await superseded, false);
+  assert.equal(app.state.armed, true);
+  assert.equal(writes.length, 1);
   writes[0].resolve(); await tick();
+  assert.equal(writes.length, 2);
+  assert.equal(writes[1].packet[1], 1);
   writes[1].resolve();
-  assert.equal(await arm, false);
-  assert.equal(await stop, true);
+  assert.equal(await first, true);
+  assert.equal(await latest, true);
+});
+
+test('STOP resets input and survives a busy write plus subsequent joystick updates', async () => {
+  const app = load(), writes = [];
+  attach(app, characteristic(packet => {
+    const held = deferred(); writes.push({packet: new Uint8Array(packet), ...held}); return held.promise;
+  }));
+  const writing = app.sendControl(false, false);
+  app.state.throttle = .8; app.state.pitch = .4;
+  app.managers[1].joystick.setPosition(null, {x: 50, y: -30});
+  const stopping = app.stop();
   assert.equal(app.state.armed, false);
-  assert.match(app.element('message').textContent, /STOP command sent/);
+  assert.equal(app.state.throttle, 0);
+  assert.equal(Math.abs(app.managers[1].joystick.frontPosition.y), 0);
+  app.state.throttle = .4;
+  assert.equal(await app.sendControl(false, false), false);
+  writes[0].resolve(); await tick();
+  assert.equal(writes.length, 2);
+  assert.equal(writes[1].packet[1], 2);
+  assert.deepEqual([...writes[1].packet.slice(4, 12)], Array(8).fill(0));
+  writes[1].resolve();
+  assert.equal(await writing, true);
+  assert.equal(await stopping, true);
+  assert.match(app.element('message').textContent, /STOP requested/);
+});
+
+test('CONNECT resets the joysticks and starts direct control without ARM or telemetry', async () => {
+  const app = load(), packets = [], selected = device(app, characteristic(async p => packets.push(new Uint8Array(p))));
+  Object.assign(app.state, {throttle: .9, yaw: 1, pitch: -1, roll: .5});
+  app.context.navigator.bluetooth.requestDevice = async options => {
+    assert.equal(options.filters[0].services[0], 'd4f20001-8f69-4b7f-9f5a-6c253728d1a0');
+    return selected.device;
+  };
+  assert.equal(await app.connect(), true);
+  assert.deepEqual(packets.map(p => p[1]), [0]);
+  assert.equal(app.element('armButton').hidden, true);
+  assert.equal(app.element('armButton').disabled, true);
+  assert.deepEqual([...packets[0].slice(4, 12)], Array(8).fill(0));
+  assert.equal(app.element('flightState').textContent, 'UNKNOWN');
+  Object.assign(app.state, {throttle: .9, pitch: -.3});
+  await app.sendControl(false, false);
+  assert.equal(packets[1][1], 0);
+  assert.equal(new DataView(packets[1].buffer).getUint16(4, true), 900);
+  assert.equal(new DataView(packets[1].buffer).getInt16(8, true), -300);
+  app.onTelemetry(telemetry(app, 1));
+  assert.equal(app.element('flightState').textContent, 'READY');
+  assert.equal(await app.toggleArm(), false);
+  assert.equal(packets.length, 2, 'disabled ARM must never send or block a packet');
 });
 
 test('double CONNECT opens one picker; old listeners cannot alter a new session', async () => {
@@ -236,18 +183,46 @@ test('missing GATT service is not misreported as a canceled picker', async () =>
   assert.match(app.element('message').textContent, /Required service missing/);
   assert.doesNotMatch(app.element('message').textContent, /canceled/);
   assert.equal(selected.device.gatt.connected, false);
-  assert.equal(app.element('connectButton').disabled, false);
 });
 
-test('failed initial safety command cleans up a partially connected device', async () => {
+test('failed initial write cleans up a partially connected device', async () => {
   const app = load();
   const selected = device(app, characteristic(async () => { throw new Error('Initial write failed'); }));
   app.context.navigator.bluetooth.requestDevice = async () => selected.device;
   assert.equal(await app.connect(), false);
   assert.equal(app.ble.connected, false);
   assert.equal(selected.device.gatt.connected, false);
-  assert.equal(selected.notifications.listeners.size, 0);
   assert.match(app.element('message').textContent, /Initial write failed/);
+});
+
+test('DISCONNECT closes the BLE link immediately even if a write is stalled', async () => {
+  const app = load(), selected = device(app);
+  app.context.navigator.bluetooth.requestDevice = async () => selected.device;
+  assert.equal(await app.connect(), true);
+  const held = deferred();
+  app.ble.control = characteristic(() => held.promise);
+  const writing = app.sendControl(false, false);
+  assert.equal(await app.connect(), true);
+  assert.equal(selected.device.gatt.connected, false);
+  assert.equal(await writing, false);
+  assert.equal(app.state.armed, false);
+  held.resolve(); await tick();
+});
+
+test('hidden pages pause input and resume direct control without an ARM step', async () => {
+  const app = load(), packets = [];
+  attach(app, characteristic(async p => packets.push(new Uint8Array(p))));
+  app.state.throttle = .7;
+  await app.sendControl(false, false);
+  app.context.document.hidden = true;
+  app.setTime(600); app.requestControlUpdate(); await app.runTimers();
+  assert.equal(packets.length, 1);
+  assert.equal(app.state.throttle, .7);
+  app.context.document.hidden = false;
+  app.requestControlUpdate(); await tick();
+  assert.equal(packets.length, 2);
+  assert.equal(packets.at(-1)[1], 0);
+  assert.equal(new DataView(packets.at(-1).buffer).getUint16(4, true), 700);
 });
 
 test('RTT expires without incoming telemetry and pending samples stay bounded', async () => {
@@ -272,13 +247,6 @@ test('RTT expires without incoming telemetry and pending samples stay bounded', 
   app.onDisconnected();
   assert.equal(app.element('txRate').textContent, '0 Hz');
   assert.equal(app.element('rtt').textContent, '-- ms');
-});
-
-test('corrupt telemetry cannot change ARM intent', async () => {
-  const app = load(); attach(app);
-  await app.toggleArm();
-  app.onTelemetry(telemetry(app, 4, app.state.seq, true));
-  assert.equal(app.state.armed, true);
 });
 
 test('joystick data changes immediately while DOM rendering batches into one frame', () => {
@@ -362,8 +330,7 @@ test('a failed native write preserves its reason and does not retry a command th
   const control = characteristic(async () => { writes++; throw 'Native write rejected'; });
   control.writeValueWithResponse = async () => { retries++; };
   attach(app, control);
-  assert.equal(await app.toggleArm(), false);
-  assert.equal(app.state.armed, false);
+  assert.equal(await app.sendControl(false, false), false);
   assert.match(app.element('message').textContent, /Native write rejected/);
   assert.equal(writes, 1);
   assert.equal(retries, 0);

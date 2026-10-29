@@ -3,10 +3,17 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 
 const html = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8');
-const source = [...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g)]
-  .map(match => match[1]).find(script => script.includes('function makePacket'));
-const entry = "render();renderFullscreen();setConnection(false,'NOT CONNECTED');";
-assert.ok(source.includes(entry), 'Controller entry point must exist');
+const scripts = [...html.matchAll(/<script\s[^>]*src="([^" ]+)"[^>]*><\/script>/g)]
+  .map(match => new URL('../' + match[1], import.meta.url));
+assert.ok(scripts.length > 0, 'Controller scripts must exist');
+assert.ok(scripts.some(script => script.pathname.endsWith('/app.js')), 'HTML must load the controller entry point');
+assert.equal(new Set(scripts.map(script => script.href)).size, scripts.length, 'Page scripts must not repeat');
+const htmlIds = [...html.matchAll(/\bid="([^"]+)"/g)].map(match => match[1]);
+const elementIds = new Set(htmlIds);
+assert.equal(elementIds.size, htmlIds.length, 'HTML IDs must be unique');
+for (const [, asset] of html.matchAll(/(?:src|href)="(\.\/[^" ]+)"/g)) {
+  assert.ok(fs.existsSync(new URL('../' + asset, import.meta.url)), 'Missing page asset: ' + asset);
+}
 
 function deferred() {
   let resolve, reject;
@@ -20,13 +27,17 @@ function node(id) {
   const classes = new Set();
   return {
     id, textContent: id === 'rtt' ? '-- ms' : id === 'txRate' ? '0 Hz' : '',
-    disabled: false, style: {}, clientWidth: 200, clientHeight: 240,
+    disabled: false, value: '', checked: false, open: false,
+    style: {}, clientWidth: 200, clientHeight: 240,
     children: [], listeners: new Map(), classList: {toggle(name, enabled) {
       enabled ? classes.add(name) : classes.delete(name);
     }},
     addEventListener(type, fn) { this.listeners.set(type, fn); },
     removeEventListener(type, fn) { if (this.listeners.get(type) === fn) this.listeners.delete(type); },
-    setAttribute(name, value) { this[name] = value; },
+    setAttribute(name, value) { this[name] = name === 'open' ? true : value; },
+    removeAttribute(name) { if (name === 'open') this.open = false; else delete this[name]; },
+    showModal() { this.open = true; },
+    close() { this.open = false; },
     appendChild(child) { child.parentElement = this; this.children.push(child); return child; },
     removeChild(child) { this.children = this.children.filter(item => item !== child); child.parentElement = null; },
     contains(child) { return this.children.includes(child); },
@@ -46,6 +57,7 @@ function load(config = {}, {realNipple = false, touch = false} = {}) {
   let timerId = 0;
   let now = 100, frameId = 0;
   const element = id => {
+    if (!elementIds.has(id)) return null;
     if (!elements.has(id)) elements.set(id, node(id));
     return elements.get(id);
   };
@@ -83,7 +95,6 @@ function load(config = {}, {realNipple = false, touch = false} = {}) {
     setInterval: (fn, ms) => { intervals.push({fn, ms}); return intervals.length; },
     console
   };
-  const exports = 'window.__test={state,ble,pendingTimes,sendControl,connect,onDisconnected,onTelemetry,stop,toggleArm,makePacket,crc16,updateMetrics,requestControlUpdate,disconnect,TX_INTERVAL_MS};';
   vm.createContext(context);
   if (realNipple) {
     Object.assign(window, {scrollX: 0, scrollY: 0, setTimeout: context.setTimeout,
@@ -93,15 +104,33 @@ function load(config = {}, {realNipple = false, touch = false} = {}) {
     context.getComputedStyle = () => ({position: 'absolute', display: 'block'});
     if (touch) window.ontouchstart = null;
     else window.PointerEvent = function() {};
-    vm.runInContext(fs.readFileSync(new URL('../nipplejs.min.js', import.meta.url), 'utf8'), context);
-    window.nipplejs = context.nipplejs;
-    const create = context.nipplejs.create;
-    window.nipplejs.create = options => {
-      const manager = create(options); managers.push(manager); return manager;
-    };
   }
-  vm.runInContext(source.replace(entry, exports + entry), context);
-  return {...window.__test, context, element, managers, intervals,
+  let controller;
+  for (const script of scripts) {
+    if (script.pathname.endsWith('/nipplejs.min.js') && !realNipple) continue;
+    if (script.pathname.endsWith('/app.js')) {
+      // Capture the instance while executing the real entry point in HTML order.
+      const factory = window.FlightController;
+      assert.ok(factory, 'Controller must load before its entry point');
+      window.FlightController = {create: options => { controller = factory.create(options); }};
+      try {
+        vm.runInContext(fs.readFileSync(script, 'utf8'), context, {filename: script.pathname});
+      } finally {
+        window.FlightController = factory;
+      }
+    } else {
+      vm.runInContext(fs.readFileSync(script, 'utf8'), context, {filename: script.pathname});
+      if (script.pathname.endsWith('/nipplejs.min.js')) {
+        window.nipplejs = context.nipplejs;
+        const create = context.nipplejs.create;
+        window.nipplejs.create = options => {
+          const manager = create(options); managers.push(manager); return manager;
+        };
+      }
+    }
+  }
+  assert.ok(controller, 'Page entry point must initialize the controller');
+  return {...controller, context, element, managers, intervals,
     setTime: time => { now = time; },
     async runTimers() {
       for (const [id, timer] of [...timers]) {

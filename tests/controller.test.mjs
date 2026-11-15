@@ -10,17 +10,43 @@ test('wire format, CRC, axis order and default heartbeat remain compatible', () 
   const packet = new DataView(app.makePacket(false));
   assert.equal(packet.byteLength, 14);
   assert.deepEqual([...new Uint8Array(packet.buffer).slice(0, 12)],
-    [1, 0, 0x34, 0x12, 0xf4, 1, 6, 0xff, 0xee, 2, 0x18, 0xfc]);
+    [1, 1, 0x34, 0x12, 0xf4, 1, 6, 0xff, 0xee, 2, 0x18, 0xfc]);
   assert.equal(app.TX_INTERVAL_MS, 20);
   assert.ok(app.intervals.some(timer => timer.ms === 20));
   app.state.seq = 65535;
   assert.equal(new DataView(app.makePacket(true)).getUint16(2, true), 0);
 });
 
-test('optional ARM mode preserves the ON/OFF switch without waiting for telemetry', async () => {
+test('CALIB sends a stopped command and waits for firmware completion telemetry', async () => {
+  const app = load(), packets = [];
+  attach(app, characteristic(async packet => packets.push(new Uint8Array(packet))));
+  Object.assign(app.state, {armed: true, throttle: .8, yaw: .4, pitch: -.3, roll: .2});
+  assert.equal(await app.calibrateImu(), true);
+  assert.equal(app.state.armed, false);
+  assert.equal(app.state.throttle, 0);
+  assert.equal(packets.length, 1);
+  assert.equal(packets[0][1], 4);
+  assert.deepEqual([...packets[0].slice(4, 12)], Array(8).fill(0));
+  assert.equal(app.element('calibrationButton').disabled, true);
+  assert.equal(app.element('calibrationButton').textContent, 'CALIBRATING');
+
+  app.onTelemetry(telemetry(app, 8));
+  assert.equal(app.element('flightState').textContent, 'CALIBRATING');
+  assert.match(app.element('message').textContent, /keep the drone level/i);
+  app.onTelemetry(telemetry(app, 2));
+  assert.equal(app.element('calibrationButton').disabled, false);
+  assert.equal(app.element('calibrationButton').textContent, 'CALIB');
+  assert.match(app.element('message').textContent, /calibration complete/i);
+});
+
+test('required ARM mode rejects high throttle and preserves the ON/OFF switch', async () => {
   const app = load({requireArm: true}), packets = [];
   attach(app, characteristic(async packet => packets.push(new DataView(packet))));
   Object.assign(app.state, {throttle: .9, yaw: .2, pitch: -.3, roll: .4});
+  assert.equal(await app.toggleArm(), false);
+  assert.match(app.element('message').textContent, /Lower throttle/);
+  assert.equal(packets.length, 0);
+  app.state.throttle = 0;
   assert.equal(await app.toggleArm(), true);
   assert.equal(app.state.armed, true);
   assert.equal(app.element('armButton').textContent, 'ARM ON');
@@ -28,12 +54,12 @@ test('optional ARM mode preserves the ON/OFF switch without waiting for telemetr
   assert.equal(app.element('flightState').textContent, 'UNKNOWN');
   assert.equal(packets.length, 1);
   assert.equal(packets[0].getUint8(1), 1);
-  assert.equal(packets[0].getUint16(4, true), 900);
+  assert.equal(packets[0].getUint16(4, true), 0);
   assert.equal(await app.toggleArm(), true);
   assert.equal(app.element('armButton').textContent, 'ARM OFF');
   assert.equal(packets.length, 2);
   assert.equal(packets[1].getUint8(1), 0);
-  assert.equal(packets[1].getUint16(4, true), 900);
+  assert.equal(packets[1].getUint16(4, true), 0);
   assert.equal(app.state.pitch, -.3, 'the switch must not reset joystick input');
 });
 
@@ -110,7 +136,7 @@ test('STOP resets input and survives a busy write plus subsequent joystick updat
   assert.match(app.element('message').textContent, /STOP requested/);
 });
 
-test('CONNECT resets the joysticks and starts direct control without ARM or telemetry', async () => {
+test('CONNECT starts disarmed and requires an explicit low-throttle ARM request', async () => {
   const app = load(), packets = [], selected = device(app, characteristic(async p => packets.push(new Uint8Array(p))));
   Object.assign(app.state, {throttle: .9, yaw: 1, pitch: -1, roll: .5});
   app.context.navigator.bluetooth.requestDevice = async options => {
@@ -119,8 +145,9 @@ test('CONNECT resets the joysticks and starts direct control without ARM or tele
   };
   assert.equal(await app.connect(), true);
   assert.deepEqual(packets.map(p => p[1]), [0]);
-  assert.equal(app.element('armButton').hidden, true);
-  assert.equal(app.element('armButton').disabled, true);
+  assert.equal(app.element('armButton').hidden, false);
+  assert.equal(app.element('armButton').disabled, false);
+  assert.equal(app.element('settingsButton').hidden, true);
   assert.deepEqual([...packets[0].slice(4, 12)], Array(8).fill(0));
   assert.equal(app.element('flightState').textContent, 'UNKNOWN');
   Object.assign(app.state, {throttle: .9, pitch: -.3});
@@ -128,10 +155,17 @@ test('CONNECT resets the joysticks and starts direct control without ARM or tele
   assert.equal(packets[1][1], 0);
   assert.equal(new DataView(packets[1].buffer).getUint16(4, true), 900);
   assert.equal(new DataView(packets[1].buffer).getInt16(8, true), -300);
-  app.onTelemetry(telemetry(app, 1));
-  assert.equal(app.element('flightState').textContent, 'READY');
   assert.equal(await app.toggleArm(), false);
-  assert.equal(packets.length, 2, 'disabled ARM must never send or block a packet');
+  app.state.throttle = 0;
+  assert.equal(await app.toggleArm(), true);
+  assert.equal(packets.at(-1)[1], 1);
+  app.onTelemetry(telemetry(app, 1));
+  assert.equal(app.element('flightState').textContent, 'ARMED');
+  assert.equal(app.state.armed, true);
+  assert.equal(await app.toggleArm(), true);
+  app.state.throttle = .9;
+  assert.equal(await app.toggleArm(), false);
+  assert.match(app.element('message').textContent, /Lower throttle/);
 });
 
 test('double CONNECT opens one picker; old listeners cannot alter a new session', async () => {
@@ -209,20 +243,25 @@ test('DISCONNECT closes the BLE link immediately even if a write is stalled', as
   held.resolve(); await tick();
 });
 
-test('hidden pages pause input and resume direct control without an ARM step', async () => {
+test('hidden pages send STOP, clear ARM and resume only in the safe state', async () => {
   const app = load(), packets = [];
   attach(app, characteristic(async p => packets.push(new Uint8Array(p))));
-  app.state.throttle = .7;
+  app.state.armed = true; app.state.throttle = .7;
   await app.sendControl(false, false);
   app.context.document.hidden = true;
+  app.context.document.listeners.get('visibilitychange')();
+  await tick();
   app.setTime(600); app.requestControlUpdate(); await app.runTimers();
-  assert.equal(packets.length, 1);
-  assert.equal(app.state.throttle, .7);
+  assert.equal(packets.at(-1)[1], 2);
+  assert.equal(app.state.armed, false);
+  assert.equal(app.state.throttle, 0);
+  const stoppedCount = packets.length;
   app.context.document.hidden = false;
+  app.context.document.listeners.get('visibilitychange')();
   app.requestControlUpdate(); await tick();
-  assert.equal(packets.length, 2);
+  assert.ok(packets.length > stoppedCount);
   assert.equal(packets.at(-1)[1], 0);
-  assert.equal(new DataView(packets.at(-1).buffer).getUint16(4, true), 700);
+  assert.equal(new DataView(packets.at(-1).buffer).getUint16(4, true), 0);
 });
 
 test('RTT expires without incoming telemetry and pending samples stay bounded', async () => {

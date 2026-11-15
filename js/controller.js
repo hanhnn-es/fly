@@ -20,6 +20,7 @@ function create(overrides) {
   var SERVICE_UUID = CONFIG.serviceUuid;
   var CONTROL_UUID = CONFIG.controlUuid;
   var TELEMETRY_UUID = CONFIG.telemetryUuid;
+  var SUPPORTS_SETTINGS = typeof CONFIG.configUuid === 'string' && CONFIG.configUuid.length > 0;
   var configuredInterval = Number(CONFIG.txIntervalMs);
   var TX_INTERVAL_MS = Number.isFinite(configuredInterval) && configuredInterval > 0 ?
       Math.max(10, configuredInterval) :
@@ -49,9 +50,10 @@ function create(overrides) {
   var nextControlTimer = null, lastControlQueuedAt = 0;
   var renderFrame = null;
   var settingsOpen = false, settingsBusy = false;
+  var calibrating = false, calibrationAcknowledged = false;
   var ui = {};
   ['brandName', 'message', 'leftValue', 'rightValue', 'flightState', 'armButton', 'connectButton',
-   'stopButton', 'linkState', 'linkText', 'fullscreenButton', 'leftStick', 'rightStick',
+   'stopButton', 'calibrationButton', 'linkState', 'linkText', 'fullscreenButton', 'leftStick', 'rightStick',
    'commandPanel', 'txRate', 'rtt', 'settingsButton']
       .forEach(function(id) {
         ui[id] = document.getElementById(id)
@@ -75,7 +77,10 @@ function create(overrides) {
   function renderControls() {
     ui.armButton.hidden = !CONFIG.requireArm;
     ui.armButton.disabled = !CONFIG.requireArm || !ble.connected || ble.connecting || settingsOpen;
-    ui.settingsButton.disabled = !ble.connected || ble.connecting || settingsOpen;
+    ui.calibrationButton.disabled = !ble.connected || ble.connecting || settingsOpen || calibrating;
+    setText(ui.calibrationButton, calibrating ? 'CALIBRATING' : 'CALIB');
+    ui.settingsButton.hidden = !SUPPORTS_SETTINGS;
+    ui.settingsButton.disabled = !SUPPORTS_SETTINGS || !ble.connected || ble.connecting || settingsOpen;
     ui.connectButton.disabled = ble.connecting;
     setText(
         ui.connectButton,
@@ -95,6 +100,8 @@ function create(overrides) {
   function flightStatus() {
     if (reportedFlags === null)
       return ble.connected ? 'UNKNOWN' : 'SAFE';
+    if (reportedFlags & 8)
+      return 'CALIBRATING';
     if (reportedFlags & 2)
       return 'FAILSAFE';
     if (reportedFlags & 4)
@@ -166,18 +173,18 @@ function create(overrides) {
   var settings = window.FlightSettings.create(
       {read: readSettings, save: saveSettings, close: closeSettings, disconnect: disconnect});
 
-  function makePacket(emergency, values) {
+  function makePacket(emergency, values, calibrate) {
     state.seq = (state.seq + 1) & 0xffff;
-    return protocol.controlPacket(state.seq, CONFIG.requireArm, emergency, values || state)
+    return protocol.controlPacket(state.seq, CONFIG.requireArm, emergency, values || state, calibrate)
   }
 
-  function sendControl(emergency, withResponse) {
+  function sendControl(emergency, withResponse, calibrate) {
     if (!ble.connected || !ble.control)
       return Promise.resolve(false);
     if (settingsOpen && !emergency)
       return Promise.resolve(false);
     // Keep the latest input while a write is in flight. A queued STOP wins.
-    if (ble.pending && ble.pending.emergency && !emergency)
+    if (ble.pending && (ble.pending.emergency || ble.pending.calibrate) && !emergency && !calibrate)
       return Promise.resolve(false);
     settleJob(ble.pending, false);
     return new Promise(function(resolve) {
@@ -185,6 +192,7 @@ function create(overrides) {
         session: ble.session,
         values: Object.assign({}, state),
         emergency: Boolean(emergency),
+        calibrate: Boolean(calibrate),
         withResponse: Boolean(withResponse),
         resolve: resolve
       };
@@ -204,7 +212,7 @@ function create(overrides) {
   }
 
   function requestControlUpdate() {
-    if (!ble.connected || !ble.control || ble.connecting || document.hidden || settingsOpen)
+    if (!ble.connected || !ble.control || ble.connecting || document.hidden || settingsOpen || calibrating)
       return;
     var now = performance.now(), delay = Math.max(0, TX_INTERVAL_MS - (now - lastControlQueuedAt));
     if (delay === 0) {
@@ -226,7 +234,7 @@ function create(overrides) {
     ble.pending = null;
     ble.active = job;
     ble.busy = true;
-    var packet = makePacket(job.emergency, job.values), seq = state.seq, success = false;
+    var packet = makePacket(job.emergency, job.values, job.calibrate), seq = state.seq, success = false;
     pendingTimes.set(seq, performance.now());
     try {
       await window.FlightBluetooth.serializeGatt(ble, session, function() {
@@ -298,6 +306,16 @@ function create(overrides) {
     var now = performance.now();
     lastTelemetryAt = now;
     reportedFlags = flags;
+    if (flags & 8) {
+      calibrating = true;
+      calibrationAcknowledged = true;
+      message('Calibrating IMU — keep the drone level and completely still.');
+    } else if (calibrating && calibrationAcknowledged) {
+      calibrating = false;
+      calibrationAcknowledged = false;
+      message('IMU calibration complete. Controls remain disarmed.');
+      requestControlUpdate()
+    }
     if (started !== undefined) {
       var rtt = Math.max(0, now - started);
       if (rtt < TELEMETRY_TIMEOUT_MS) {
@@ -319,6 +337,8 @@ function create(overrides) {
   }
 
   async function configCharacteristic(session) {
+    if (!SUPPORTS_SETTINGS)
+      throw new Error('Settings are not exposed by this flight controller.');
     if (ble.config)
       return ble.config;
     if (!ble.service)
@@ -333,6 +353,10 @@ function create(overrides) {
   }
 
   async function openSettings() {
+    if (!SUPPORTS_SETTINGS) {
+      message('This flight controller does not expose the optional settings service.');
+      return false
+    }
     if (!ble.connected || ble.connecting || settingsOpen)
       return false;
     settingsOpen = true;
@@ -466,6 +490,7 @@ function create(overrides) {
     ble.active = null;
     ble.disconnectHandler = null;
     ble.telemetryHandler = null;
+    calibrating = calibrationAcknowledged = false;
     settingsOpen = settingsBusy = false;
     settings.hide();
     resetControls();
@@ -560,7 +585,8 @@ function create(overrides) {
       render();
       message(
           'Connected to ' + (device.name || CONFIG.fallbackDeviceName) + '.' +
-          (CONFIG.requireArm ? '' : ' Move the joysticks to control.'));
+          (CONFIG.requireArm ? ' Keep throttle at 0%, then press ARM ON.' :
+                               ' Move the joysticks to control.'));
       return true
     } catch (error) {
       if (currentSession(session)) {
@@ -593,18 +619,51 @@ function create(overrides) {
   }
 
   function toggleArm() {
-    if (!CONFIG.requireArm || !ble.connected || settingsOpen)
+    if (!CONFIG.requireArm || !ble.connected || settingsOpen || calibrating)
       return Promise.resolve(false);
+    if (!state.armed && state.throttle > 0.05) {
+      message('Lower throttle to 0% before ARM ON.');
+      return Promise.resolve(false)
+    }
     state.armed = !state.armed;
     render();
     return sendControl(false, true)
+  }
+
+  async function calibrateImu() {
+    if (!ble.connected || ble.connecting || settingsOpen || calibrating)
+      return false;
+    resetControls();
+    calibrating = true;
+    calibrationAcknowledged = false;
+    render();
+    message('Starting IMU calibration — place the drone level and do not move it.');
+    var success = await sendControl(false, true, true);
+    if (!success && calibrating && !calibrationAcknowledged) {
+      calibrating = false;
+      render();
+      message('IMU calibration command failed: ' + (ble.lastError || 'Bluetooth write failed.'))
+    }
+    return success
   }
 
   ui.connectButton.addEventListener('click', connect);
   ui.fullscreenButton.addEventListener('click', toggleFullscreen);
   ui.armButton.addEventListener('click', toggleArm);
   ui.stopButton.addEventListener('click', stop);
+  ui.calibrationButton.addEventListener('click', calibrateImu);
   ui.settingsButton.addEventListener('click', openSettings);
+  document.addEventListener('visibilitychange', function() {
+    if (document.hidden) {
+      // Do not resume an old armed command after the firmware watchdog has
+      // disarmed during a hidden/background tab.
+      stop()
+    } else {
+      resetControls();
+      render();
+      requestControlUpdate()
+    }
+  });
   function onFullscreenChange() {
     renderFullscreen();
     joysticks.scheduleLayout()
@@ -630,6 +689,7 @@ function create(overrides) {
     onTelemetry: onTelemetry,
     stop: stop,
     toggleArm: toggleArm,
+    calibrateImu: calibrateImu,
     makePacket: makePacket,
     crc16: crc16,
     updateMetrics: updateMetrics,

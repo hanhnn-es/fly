@@ -8,7 +8,10 @@ const defaults = {reverse: 0, center_left: 1500, center_right: 1500, min_us: 100
 const protocol = app => app.context.window.FlightProtocol;
 
 function setup(options = {}) {
-  const app = load(options.requireArm ? {requireArm: true} : {});
+  const app = load({
+    requireArm: options.requireArm !== false,
+    configUuid: 'd4f20004-8f69-4b7f-9f5a-6c253728d1a0'
+  });
   const packets = [], events = [];
   let stored = protocol(app).configPacket({...defaults, ...options.config});
   let reads = 0, saves = 0;

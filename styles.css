@@ -88,6 +88,7 @@ body.armed .flight-state strong { color:var(--amber); }
 .command:disabled { opacity:.35; cursor:default; }
 #connectButton { color:var(--blue); border-color:rgba(56,189,248,.4); }
 #armButton { color:var(--green); border-color:rgba(74,222,128,.34); }
+#calibrationButton { color:var(--amber); border-color:rgba(251,191,36,.4); }
 body.arm-on #armButton { color:#10120b; border-color:var(--amber); background:var(--amber); }
 #stopButton { color:#fff; border-color:#d93650; background:linear-gradient(180deg,#e9445d,#bc2941); }
 .telemetry { flex:none; width:178px; max-width:100%; display:grid; grid-template-columns:1fr 1fr; gap:5px; }
@@ -103,8 +104,8 @@ footer { color:var(--muted); font-size:.61rem; }
 @media(orientation:portrait) {
   .app { grid-template-rows:42px minmax(0,1fr) 54px; }
   main { grid-template-columns:repeat(2,minmax(0,1fr)); grid-template-rows:auto minmax(0,1fr); grid-template-areas:"center center" "left right"; gap:14px 10px; }
-  .command-panel { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:6px; align-self:start; }
-  body.require-arm .command-panel { grid-template-columns:repeat(4,minmax(0,1fr)); }
+  .command-panel { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:6px; align-self:start; }
+  body.require-arm .command-panel { grid-template-columns:repeat(5,minmax(0,1fr)); }
   .flight-state,.command { min-height:58px; }
   footer { display:grid; grid-template-columns:minmax(0,1fr); grid-template-rows:auto 26px; gap:4px; }
   .telemetry { width:100%; }

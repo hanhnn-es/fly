@@ -28,16 +28,17 @@ function crc16(bytes, length) {
   return crc;
 }
 
-function controlPacket(sequence, requireArm, emergency, values) {
+function controlPacket(sequence, requireArm, emergency, values, calibrate) {
   var buffer = new ArrayBuffer(CONTROL_SIZE);
   var view = new DataView(buffer);
+  var stopped = emergency || calibrate;
   view.setUint8(0, VERSION);
-  view.setUint8(1, emergency ? 2 : requireArm && values.armed ? 1 : 0);
+  view.setUint8(1, calibrate ? 4 : emergency ? 2 : requireArm && values.armed ? 1 : 0);
   view.setUint16(2, sequence, true);
-  view.setUint16(4, emergency ? 0 : Math.round(clamp(values.throttle, 0, 1) * 1000), true);
-  view.setInt16(6, emergency ? 0 : Math.round(clamp(values.yaw, -1, 1) * 1000), true);
-  view.setInt16(8, emergency ? 0 : Math.round(clamp(values.pitch, -1, 1) * 1000), true);
-  view.setInt16(10, emergency ? 0 : Math.round(clamp(values.roll, -1, 1) * 1000), true);
+  view.setUint16(4, stopped ? 0 : Math.round(clamp(values.throttle, 0, 1) * 1000), true);
+  view.setInt16(6, stopped ? 0 : Math.round(clamp(values.yaw, -1, 1) * 1000), true);
+  view.setInt16(8, stopped ? 0 : Math.round(clamp(values.pitch, -1, 1) * 1000), true);
+  view.setInt16(10, stopped ? 0 : Math.round(clamp(values.roll, -1, 1) * 1000), true);
   view.setUint16(12, crc16(new Uint8Array(buffer), 12), true);
   return buffer;
 }
@@ -49,7 +50,7 @@ function readTelemetry(view) {
   if (view.getUint8(0) !== VERSION || view.getUint16(6, true) !== crc16(bytes, 6))
     return null;
   var flags = view.getUint8(1);
-  if (flags & ~7)
+  if (flags & ~15)
     return null;
   return {flags: flags, sequence: view.getUint16(2, true)};
 }
